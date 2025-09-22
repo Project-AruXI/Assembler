@@ -1,0 +1,57 @@
+#ifndef _TOKEN_H_
+#define _TOKEN_H_
+
+
+typedef enum {
+	TK_EOF,
+	TK_NEWLINE,
+	TK_LABEL,
+	TK_DIRECTIVE,
+	TK_INSTRUCTION,
+	TK_REGISTER,
+	TK_IMM,
+	TK_COMMA,
+	TK_LPAREN,
+	TK_RPAREN,
+	TK_LBRACKET,
+	TK_RBRACKET,
+	TK_COLON,
+	TOK_COLON_COLON,
+	TK_IDENTIFIER,
+	TK_STRING,
+	TK_DOT,
+	TK_PLUS,
+	TK_MINUS,
+	TK_ASTERISK,
+	TK_SLASH,
+	TK_COMMENT,
+	// TK_CARET,
+	// TK_TILDE,
+	// TK_PIPE,
+	// TK_AMPERSAND,
+	// TK_BANG,
+	// TK_QUESTION,
+	TK_LT,
+	TK_GT,
+	TK_LTE,
+	TK_GTE,
+	TK_EQ,
+	TK_NEQ,
+	TK_AND,
+	TK_OR,
+	TK_NUMBER,
+	TK_CHAR,
+	TK_IF,
+	TK_MACRO,
+	TK_DEF,
+	TK_MAIN_TYPE,
+	TK_SUB_TYPE,
+	TK_UNKNOWN
+} tokenType;
+
+typedef struct Token {
+	char* lexeme;
+	tokenType type;
+} Token;
+
+#endif
