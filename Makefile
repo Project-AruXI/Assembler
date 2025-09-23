@@ -9,7 +9,7 @@ HEADERS = ./headers
 INCLUDES = -I$(HEADERS) -I$(COMMON)
 
 SRCS = assembler.c $(COMP)/diagnostics.c $(COMP)/lexer.c
-LIBS = libargparse.a $(COMMON)/libsds.a
+LIBS = libargparse.a $(COMMON)/libsds.a $(COMMON)/libsecuredstring.a
 TARGET = $(OUT)/arxsm
 
 OBJS = $(SRCS:.c=.o)

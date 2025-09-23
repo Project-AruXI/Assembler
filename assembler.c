@@ -59,11 +59,11 @@ int main(int argc, char const* argv[]) {
 
 	log("Output file: %s\n", outbin);
 
-	const char* allowedExts[] = { ".s", ".as", ".ars" };
+	const char* allowedExts[] = { ".s", ".as", ".ars", ".adecl" };
 
 	for (int i = 0; i < nparsed; i++) {
 		log("Input file: %s\n", argv[i]);
-		
+
 		const char* dot = strrchr(argv[i], '.');
 		if (!dot || dot == argv[i] || *(dot-1) == '/') continue;
 
@@ -90,8 +90,14 @@ int main(int argc, char const* argv[]) {
 		lexLine(lexer, line);
 
 		read = getline(&line, &n, source);
+		// log("Read line %d: %s", lexer->linenum, line);
 	}
 
+	log("\n\nLexed %d lines. Read %d tokens:", lexer->linenum, lexer->tokenCount);
+	// Show contents of lexer's tokens
+	for (int i = 0; i < lexer->tokenCount; i++) {
+		printToken(lexer->tokens[i]);
+	}
 
 	deinitLexer(lexer);
 	fclose(source);

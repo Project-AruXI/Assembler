@@ -34,7 +34,7 @@ typedef enum {
 } warnType;
 
 typedef struct LineData {
-	char* source;
+	const char* source;
 	int linenum;
 	// int colnum;
 } linedata_ctx;
