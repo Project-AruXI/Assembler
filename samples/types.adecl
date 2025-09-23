@@ -1,0 +1,56 @@
+% Normal type sets
+.type ARR0 $object.array % untyped array
+% simple types
+.type ARR1  , $object.array.byte
+.type ARR2 , $object.array.hword
+.type ARR3 ,$object.array.word
+
+.type PTR0,$object.ptr % void pointer
+.type PTR1, $object.ptr.byte
+.type PTR2, $object.ptr.hword
+.type PTR3, $object.ptr.word
+
+% Structs
+.def Node {
+  data:8.
+  next:32.
+}
+
+.def LL{
+  start::Node.
+  size:8.
+}
+
+
+.type mLL, $object.struct.LL
+
+% Assembly-time printing and directives
+
+!out .sizeof mLL
+!out .sizeof mLL.size
+!out .sizeof mLL.start.next
+!out .offset mLL.size
+!out .typeinfo Node % .typeinfo is only for assembly-time, only useful with !out
+% note that using .sizeof, .offset, and .typeinfo on mLL and LL should be the same
+% .typeinfo -> layout, size, fields
+
+
+% Conditional assembly/typing
+.if TYPES_ENABLED {
+  .type cond, $object.array.Node
+}
+
+
+% Macros
+% Tier 1
+!macro increment {
+  add x0, x0, #1
+  add x0, x0, #1
+  add x0, x0, #1
+}
+
+!macro psh reg {
+  sub sp, sp, #4
+  str @reg, [sp]
+  mv sp, xb
+}
