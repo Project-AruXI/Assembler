@@ -64,7 +64,7 @@ static void advance(Lexer* lexer) {
 void lexLine(Lexer* lexer, const char* line) {
 	initScope("lexLine");
 
-	log("Lexing line %d: `%s`", lexer->linenum, line);
+	// log("Lexing line %d: `%s`", lexer->linenum, line);
 
 	lexer->line = line;
 	lexer->linenum++;
@@ -74,9 +74,18 @@ void lexLine(Lexer* lexer, const char* line) {
 
 	Token* tok = getNextToken(lexer);
 	while (tok && tok->type != TK_NEWLINE && tok->type != TK_EOF) {
+		if (tok->type == TK_UNKNOWN) {
+			// This really should not happen????
+			// So it is an internal error????
+			linedata_ctx linedata = {
+				.linenum = lexer->linenum,
+				.source = lexer->line
+			};
+			emitError(ERR_INTERNAL, &linedata, "Unknown token: %s", tok->lexeme);
+		}
+
 		if (tok->type == TK_COMMENT) {
-			// log("Comment found, ignoring rest of line.");
-			free(tok);
+			deleteToken(tok);
 			return;
 		}
 
@@ -195,6 +204,10 @@ Token* getNextToken(Lexer* lexer) {
 
 	Token* token = (Token*) malloc(sizeof(Token));
 	if (!token) emitError(ERR_MEM, NULL, "Failed to allocate memory for token.");
+	token->lexeme = NULL;
+	token->type = TK_UNKNOWN;
+	token->sstring = NULL;
+	token->linenum = -1;
 
 	while (isblank(lexer->currentChar)) {
 		advance(lexer);
@@ -221,12 +234,17 @@ Token* getNextToken(Lexer* lexer) {
 			// - The end of .def statement (data:8.)
 			// All other instances except for floating point and directive are kept as single
 			if (isalpha(lexer->peekedChar)) {
-				// It can either be a directive or a member access, use the previous token for context
+				// It can a member access, use the previous token for context
 				if (lexer->prevToken && (lexer->prevToken->type == TK_MAIN_TYPE || lexer->prevToken->type == TK_SUB_TYPE)) {
 					// Member access
 					token->type = TK_DOT;
 					token->lexeme = sdsnew(".");
 					// log("%p; %s", token->lexeme, token->lexeme);
+					advance(lexer);
+					return token;
+				} else if (lexer->inScope) { // The end of a .def statement
+					token->type = TK_DOT;
+					token->lexeme = sdsnew(".");
 					advance(lexer);
 					return token;
 				}
@@ -369,7 +387,7 @@ Token* getNextToken(Lexer* lexer) {
 			emitError(ERR_INVALID_SYNTAX, &linedata, "Unexpected character after '#': '%c'", lexer->peekedChar);
 		case ':':
 			if (lexer->peekedChar == ':') {
-				token->type = TOK_COLON_COLON;
+				token->type = TK_COLON_COLON;
 				token->lexeme = sdsnew("::");
 				advance(lexer);
 				advance(lexer);
@@ -391,7 +409,6 @@ Token* getNextToken(Lexer* lexer) {
 			return token;
 		case '!':
 			if (isalpha(lexer->peekedChar)) {
-				// getMacro(lexer, token, &linedata);
 				getMacroIfOut(lexer, token, &linedata);
 				return token;
 			} else {
@@ -472,11 +489,11 @@ Token* getNextToken(Lexer* lexer) {
 				int len = lexer->currentPos - startPos;
 				sds lexeme = sdsnewlen(&lexer->line[startPos], len);
 				if (!lexeme) emitError(ERR_MEM, NULL, "Failed to allocate memory for token lexeme.");
-				
+
 				token->lexeme = lexeme;
 				if (lexer->currentChar == ':') {
 					if (lexer->inScope) {
-						// Treat [...]: as [identifier]: instead of [label]:
+						// Treat [...]:(:) as [identifier]:(:) instead of [label]:
 						token->type = TK_IDENTIFIER;
 						return token;
 					}
@@ -544,6 +561,12 @@ Token* getNextToken(Lexer* lexer) {
 	return NULL;
 }
 
+/**
+ * The following functions primarily serve as helpers to expose certain information, such as printing tokens,
+ * retrieving tokens from the lexer, or providing debugging output. They do not participate in the main
+ * tokenization process but are useful for interacting with or inspecting the lexer's state and output.
+ */
+
 void printToken(Token* token) {
 	if (!token) {
 		printf("NULL token\n");
@@ -568,7 +591,7 @@ void printToken(Token* token) {
 		case TK_LSQBRACKET: typeStr = "TK_LSQBRACKET"; break;
 		case TK_RSQBRACKET: typeStr = "TK_RSQBRACKET"; break;
 		case TK_COLON: typeStr = "TK_COLON"; break;
-		case TOK_COLON_COLON: typeStr = "TOK_COLON_COLON"; break;
+		case TK_COLON_COLON: typeStr = "TK_COLON_COLON"; break;
 		case TK_STRING: typeStr = "TK_STRING"; break;
 		case TK_DOT: typeStr = "TK_DOT"; break;
 		case TK_PLUS: typeStr = "TK_PLUS"; break;
@@ -596,4 +619,28 @@ void printToken(Token* token) {
 	}
 
 	log("Token(type=%s, lexeme=`%s`, line=%d)", typeStr, token->lexeme, token->linenum);
+}
+
+Token* getToken(Lexer* lexer, int index) {
+	if (index < 0 || index >= lexer->tokenCount) {
+		return NULL;
+	}
+	return lexer->tokens[index];
+}
+
+void resetLexer(Lexer* lexer) {
+	for (int i = 0; i < lexer->tokenCount; i++) {
+		sdsfree(lexer->tokens[i]->lexeme);
+		free(lexer->tokens[i]);
+	}
+	// Even though tokens were freed, capacity is to remain
+
+	lexer->tokenCount = 0;
+	lexer->currentChar = '\0';
+	lexer->peekedChar = '\0';
+	lexer->inScope = false;
+	lexer->linenum = 0;
+	lexer->line = NULL;
+
+	// prevToken and currentPos are already reset in lexLine
 }

@@ -1,7 +1,8 @@
 #ifndef _TOKEN_H_
 #define _TOKEN_H_
 
-#include "libsecuredstring.h"
+#include "../common/libsecuredstring.h"
+#include "../common/sds.h"
 
 typedef enum {
 	TK_EOF,
@@ -20,7 +21,7 @@ typedef enum {
 	TK_LBRACKET, // {
 	TK_RBRACKET, // }
 	TK_COLON, // :
-	TOK_COLON_COLON, // ::
+	TK_COLON_COLON, // ::
 	TK_STRING, // "[string]"
 	TK_DOT, // .
 	TK_PLUS, // +
@@ -49,10 +50,17 @@ typedef enum {
 
 
 typedef struct Token {
-	char* lexeme;
+	sds lexeme;
 	tokenType type;
 	int linenum;
 	SString* sstring;
 } Token;
+
+void deleteToken(Token* token);
+void deleteToken(Token* token) {
+	if (token->lexeme) sdsfree(token->lexeme);
+	if (token->sstring) ssDestroySecuredString(token->sstring);
+	free(token);
+}
 
 #endif
