@@ -4,7 +4,7 @@ This directory contains the Go-based test suites for the assembler project. Each
 
 ## Test Packages
 
-- **lexer/**: Tests the assembler's lexer (tokenizer) component.
+- **lexer/**: Tests the assembler's lexer component.
 - **parser/**: Tests the parser component.
 - **codegen/**: Tests the code generation logic.
 - **e2e/**: End-to-end tests that exercise the full assembler pipeline from input to output.
@@ -16,7 +16,7 @@ This directory contains the Go-based test suites for the assembler project. Each
 Many tests dynamically link against shared libraries built in the `out` directory. Before running tests, ensure the `out` directory is in your `LD_LIBRARY_PATH`:
 
 ```sh
-export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:../out"
+export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:[path-to-repo]/out"
 ```
 
 ## Running Tests

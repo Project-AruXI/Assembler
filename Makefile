@@ -22,10 +22,11 @@ all: arxsm
 arxsm: $(OBJS)
 	$(CC) $(CFLAGS) -o $(TARGET) $(OBJS) $(LIBS)
 
+liblexer: CFLAGS += -g -O0
 liblexer:
 	$(CC) -fPIC $(CFLAGS) -o $(COMP)/liblexer.o -c $(COMP)/lexer.c $(INCLUDES)
 	$(CC) -fPIC $(CFLAGS) -o $(COMP)/diagnostics.o -c $(COMP)/diagnostics.c $(INCLUDES)
-	$(CC) -shared -o $(OUT)/liblexer.so $(COMP)/liblexer.o $(COMP)/diagnostics.o $(INCLUDES)
+	$(CC) -shared -o $(OUT)/liblexer.so $(COMP)/liblexer.o $(COMP)/diagnostics.o $(COMMON)/libsecuredstring.a $(COMMON)/libsds.a $(INCLUDES)
 
 # libparser:
 # libcodegen:
