@@ -7,23 +7,26 @@
 #include "diagnostics.h"
 #include "sds.h"
 #include "lexer.h"
+#include "config.h"
 
-extern bool doWarn;
+Config config;
 
-int main(int argc, char const* argv[]) {
-	initScope("main");
+char* parseArgs(int argc, char const* argv[]) {
+	// Init config with defaults
+	config.useDebugSymbols = false;
+	config.warningAsFatal = false;
+	config.outbin = "out.ao";
+	config.warnings = WARN_ALL; // Enable all warnings by default
+	config.enhancedFeatures = FEATURE_NONE; // Disable all enhanced features by default
 
-	doWarn = true;
-	bool useDebugSymbols = 0;
-	bool warningAsFatal = 0;
-	bool showVersion = 0;
-	const char* outbin = "out.ao";
+	bool warningAsFatal = false;
+	bool showVersion = false;
 	char* infile = NULL;
 
 	struct argparse_option options[] = {
-		OPT_STRING('o', NULL, &outbin, "output filename", NULL, 0, 0),
-		OPT_BOOLEAN('g', NULL, &useDebugSymbols, "enable debug info", NULL, 0, 0),
-		OPT_BOOLEAN('W', "no-warn", &doWarn, "disable warnings", NULL, 0, 0),
+		OPT_STRING('o', NULL, &config.outbin, "output filename", NULL, 0, 0),
+		OPT_BOOLEAN('g', NULL, &config.useDebugSymbols, "enable debug info", NULL, 0, 0),
+		OPT_BOOLEAN('W', "no-warn", &config.warnings, "disable warnings", NULL, 0, 0),
 		OPT_BOOLEAN('F', "fatal-warning", &warningAsFatal, "treat warnings as errors", NULL, 0, 0),
 		OPT_BOOLEAN('v', "version", &showVersion, "show version and exit", NULL, 0, 0),
 		OPT_HELP(),
@@ -45,10 +48,6 @@ int main(int argc, char const* argv[]) {
 		return 0;
 	}
 
-	log("nparsed: %d", nparsed);
-	log("argc: %d", argc);
-
-
 
 	// Remaining arguments after options are input files
 	if (argc - nparsed < 1) {
@@ -57,13 +56,11 @@ int main(int argc, char const* argv[]) {
 		return 1;
 	}
 
-	log("Output file: %s\n", outbin);
+	log("Output file: %s\n", config.outbin);
 
 	const char* allowedExts[] = { ".s", ".as", ".ars", ".adecl" };
 
 	for (int i = 0; i < nparsed; i++) {
-		log("Input file: %s\n", argv[i]);
-
 		const char* dot = strrchr(argv[i], '.');
 		if (!dot || dot == argv[i] || *(dot-1) == '/') continue;
 
@@ -76,6 +73,14 @@ int main(int argc, char const* argv[]) {
 	}
 
 	if (!infile) emitError(ERR_INTERNAL, NULL, "Input file is not a valid assembly file.");
+
+	return infile;
+}
+
+int main(int argc, char const* argv[]) {
+	initScope("main");
+
+	char* infile = parseArgs(argc, argv);
 
 	FILE* source = fopen(infile, "r");
 	if (!source) emitError(ERR_IO, NULL, "Failed to open input file: %s", infile);
@@ -90,8 +95,8 @@ int main(int argc, char const* argv[]) {
 		lexLine(lexer, line);
 
 		read = getline(&line, &n, source);
-		// log("Read line %d: %s", lexer->linenum, line);
 	}
+	fclose(source);
 
 	log("\n\nLexed %d lines. Read %d tokens:", lexer->linenum, lexer->tokenCount);
 	// Show contents of lexer's tokens
@@ -99,8 +104,15 @@ int main(int argc, char const* argv[]) {
 		printToken(lexer->tokens[i]);
 	}
 
+	
+
+
+
+
+
+
+
 	deinitLexer(lexer);
-	fclose(source);
 
 	return 0;
 }
