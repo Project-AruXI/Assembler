@@ -492,6 +492,7 @@ Token* getNextToken(Lexer* lexer) {
 
 				token->lexeme = lexeme;
 				if (lexer->currentChar == ':') {
+					// What if it is `[identifier] :(:)`, cannot use currentChar to determine
 					if (lexer->inScope) {
 						// Treat [...]:(:) as [identifier]:(:) instead of [label]:
 						token->type = TK_IDENTIFIER;
@@ -503,11 +504,8 @@ Token* getNextToken(Lexer* lexer) {
 				} else if (isRegister(lexeme)) {
 					// Register
 					token->type = TK_REGISTER;
-				} else if (lexer->prevToken && lexer->prevToken->type == TK_DOT) {
-					// Sub type
-					token->type = TK_SUB_TYPE;
 				} else {
-					// For now, instructions are identifiers
+					// For now, all others are identifiers
 					token->type = TK_IDENTIFIER;
 				}
 				return token;
