@@ -234,15 +234,16 @@ Token* getNextToken(Lexer* lexer) {
 			// - The end of .def statement (data:8.)
 			// All other instances except for floating point and directive are kept as single
 			if (isalpha(lexer->peekedChar)) {
-				// It can a member access, use the previous token for context
-				if (lexer->prevToken && (lexer->prevToken->type == TK_MAIN_TYPE || lexer->prevToken->type == TK_SUB_TYPE)) {
+				char prevChar = lexer->currentPos > 0 ? lexer->line[lexer->currentPos - 1] : '\0';
+				// It can a member access, use the previous token or character for context
+				if (lexer->prevToken && (lexer->prevToken->type == TK_MAIN_TYPE || !isspace(prevChar))) {
 					// Member access
 					token->type = TK_DOT;
 					token->lexeme = sdsnew(".");
 					// log("%p; %s", token->lexeme, token->lexeme);
 					advance(lexer);
 					return token;
-				} else if (lexer->inScope) { // The end of a .def statement
+				} else if (lexer->inScope) { // The end of a .def statement when consecutive
 					token->type = TK_DOT;
 					token->lexeme = sdsnew(".");
 					advance(lexer);
