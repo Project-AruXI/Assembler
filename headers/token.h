@@ -11,7 +11,31 @@ typedef enum {
 	TK_IDENTIFIER, // [identifier] (used for .type names, ie `.type Node, $obj` or .def, ie `next::Node.)
 
 	TK_DIRECTIVE, // .[directive]
-	
+	TK_D_DATA,
+	TK_D_CONST,
+	TK_D_BSS,
+	TK_D_TEXT,
+	TK_D_EVT,
+	TK_D_IVT,
+	TK_D_SET,
+	TK_D_GLOB,
+	TK_D_END,
+	TK_D_STRING,
+	TK_D_BYTE,
+	TK_D_HWORD,
+	TK_D_WORD,
+	TK_D_FLOAT,
+	TK_D_ZERO,
+	TK_D_FILL,
+	TK_D_ALIGN,
+	TK_D_SIZE,
+	TK_D_EXTERN,
+	TK_D_TYPE,
+	TK_D_SIZEOF,
+	TK_D_DEF,
+	TK_D_INCLUDE,
+	TK_D_TYPEINFO,
+	TK_D_OFFSET,
 
 	TK_INSTRUCTION, // [instruction]
 	TK_REGISTER, // [register]

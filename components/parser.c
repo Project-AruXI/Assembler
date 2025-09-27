@@ -4,6 +4,7 @@
 #include "parser.h"
 #include "diagnostics.h"
 #include "reserved.h"
+#include "handlers.h"
 
 
 Parser* initParser(Token** tokens, int tokenCount, ParserConfig config) {
@@ -44,7 +45,7 @@ static void addAst(Parser* parser, Node* ast) {
 	if (parser->astCount == parser->astCapacity) {
 		parser->astCapacity += 2;
 		Node** temp = (Node**) realloc(parser->asts, sizeof(Node*) * parser->astCapacity);
-		if (temp) emitError(ERR_MEM, NULL, "Failed to reallocate memory for parser ASTs.");
+		if (!temp) emitError(ERR_MEM, NULL, "Failed to reallocate memory for parser ASTs.");
 		parser->asts = temp;
 	}
 	parser->asts[parser->astCount++] = ast;
@@ -52,7 +53,7 @@ static void addAst(Parser* parser, Node* ast) {
 
 
 static void parseLabel(Parser* parser) {
-	Token* labelToken = parser->tokens[parser->currentTokenIndex];
+	Token* labelToken = parser->tokens[parser->currentTokenIndex++];
 
 	// Make sure the label is valid
 	if (labelToken->lexeme[0] != '_' && !isalpha(labelToken->lexeme[0])) {
@@ -96,7 +97,8 @@ static void parseLabel(Parser* parser) {
 		existingEntry->value.val = parser->sectionTable->entries[parser->sectionTable->activeSection].lp;
 	} else {
 		SYMBFLAGS flags = CREATE_FLAGS(M_ABS, T_NONE, E_VAL, parser->sectionTable->activeSection, L_LOC, R_NREF, D_DEF);
-		symb_entry_t* symbEntry = initSymbolEntry(labelToken->lexeme, flags, labelToken->sstring, labelToken->linenum);
+		uint32_t addr = parser->sectionTable->entries[parser->sectionTable->activeSection].lp;
+		symb_entry_t* symbEntry = initSymbolEntry(labelToken->lexeme, flags, NULL, addr, labelToken->sstring, labelToken->linenum);
 		if (!symbEntry) emitError(ERR_MEM, NULL, "Failed to create symbol table entry for label.");
 
 		// Add the symbol entry to the symbol table
@@ -106,37 +108,51 @@ static void parseLabel(Parser* parser) {
 
 static void parseIdentifier(Parser* parser) {
 	emitWarning(WARN_UNIMPLEMENTED, NULL, "Identifier parsing not yet implemented.");
+	parser->currentTokenIndex++;
 	return;
 }
 
 static void parseDirective(Parser* parser) {
-	emitWarning(WARN_UNIMPLEMENTED, NULL, "Directive parsing not yet implemented.");
-	return;
+	initScope("parseDirective");
 
 	Token* directiveToken = parser->tokens[parser->currentTokenIndex];
 
 	Node* directiveRoot = initASTNode(AST_ROOT, ND_DIRECTIVE, directiveToken, NULL);
 	if (!directiveRoot) emitError(ERR_MEM, NULL, "Failed to create AST node for directive.");
 
-	
 	linedata_ctx linedata = {
 		.linenum = directiveToken->linenum,
 		.source = ssGetString(directiveToken->sstring)
 	};
+
+	// Since the lexer bunched all directives as TK_DIRECTIVE, the actual directive needs to be determined
+	// The token field will also be updated to reflect the actual directive
+
+	int index = indexOf(DIRECTIVES, sizeof(DIRECTIVES)/sizeof(DIRECTIVES[0]), directiveToken->lexeme+1);
+
+	if (index == -1) emitError(ERR_INVALID_DIRECTIVE, &linedata, "Unknown directive: `%s`", directiveToken->lexeme+1);
+
+	// To properly identify the directive
+	enum Directives directive = (enum Directives) index;
+
+	log("Parsing directive: `%s`. Set type to `%s`", directiveToken->lexeme, DIRECTIVES[directive]);
+
 	// The actions depend on the specific directive
 
-	switch (indexOf(DIRECTIVES, sizeof(DIRECTIVES)/sizeof(DIRECTIVES[0]), directiveToken->lexeme)) {
-		case DATA:
-		case CONST:
-		case BSS:
-		case TEXT:
-		case EVT:
-		case IVT:
+	// return;
+
+	switch (directive) {
+		case DATA: handleData(parser); break;
+		case CONST: handleConst(parser); break;
+		case BSS: handleBss(parser); break;
+		case TEXT: handleText(parser); break;
+		case EVT: handleEvt(parser); break;
+		case IVT: handleIvt(parser); break;
 		case SET:
 		case GLOB:
 		case END:
 		case STRING:
-		case BYTE:
+		case BYTE: handleByte(parser, directiveRoot); break;
 		case HWORD:
 		case WORD:
 		case FLOAT:
@@ -150,14 +166,14 @@ static void parseDirective(Parser* parser) {
 		case DEF:
 		case INCLUDE:
 		case TYPEINFO:
+		case OFFSET:
+			parser->currentTokenIndex++;
 			emitWarning(WARN_UNIMPLEMENTED, &linedata, "Directive `%s` not yet implemented!", directiveToken->lexeme);
 			break;
 		default:
 			emitError(ERR_INVALID_DIRECTIVE, &linedata, "Unknown directive: `%s`", directiveToken->lexeme);
 			break;
 	}
-
-
 
 	addAst(parser, directiveRoot);
 }
@@ -218,19 +234,26 @@ void parse(Parser* parser) {
 			case TK_IF:
 			case TK_MAIN_TYPE:
 			case TK_SUB_TYPE:
-				// All of these token types typically follow a directive, an identifier, or a label
-				// So these are to be parsed in their respective contexts
-				// Encountering them at the top level is an issue
-				linedata_ctx linedata = {
-					.linenum = token->linenum,
-					.source = ssGetString(token->sstring)
-				};
-				emitError(ERR_INVALID_SYNTAX, &linedata, "Unexpected token at top level: `%s`", token->lexeme);
-				break;
-			default: emitError(ERR_INTERNAL, NULL, "Parser encountered unhandled token type: %d", token->type);
+			// All of these token types typically follow a directive, an identifier, or a label
+			// So these are to be parsed in their respective contexts
+			// Encountering them at the top level is an issue
+			linedata_ctx linedata = {
+				.linenum = token->linenum,
+				.source = ssGetString(token->sstring)
+			};
+			emitError(ERR_INVALID_SYNTAX, &linedata, "Unexpected token: `%s`", token->lexeme);
+			break;
+			case TK_NEWLINE:
+			// Newlines can either appear at the end of a statement or on their own line
+			// The end-of-statement newlines are handled in the respective handlers
+			// So newlines that appear here are just standalone newlines
+			// Ignore, but make sure to advance
+			parser->currentTokenIndex++;
+			break;
+			default: emitError(ERR_INTERNAL, NULL, "Parser encountered unhandled token type: %s", token->lexeme);
 		}
-
-		currentTokenIndex++;
+		currentTokenIndex = parser->currentTokenIndex;
+		// currentTokenIndex++;
 	}
 
 }

@@ -6,13 +6,16 @@
 static char* DIRECTIVES[] = {
 	"data", "const", "bss", "text", "evt", "ivt", "set", "glob", "end",
 	"string", "byte", "hword", "word", "float", "zero", "fill", "align",
-	"size", "extern", "type", "sizeof", "def", "include", "typeinfo"
+	"size", "extern", "type", "sizeof", "def", "include", "typeinfo", "offset"
 };
+
+// These constants are used for indexing into/out of the DIRECTIVES array
+// It is not to be used for token types
 
 enum Directives {
 	DATA, CONST, BSS, TEXT, EVT, IVT, SET, GLOB, END,
 	STRING, BYTE, HWORD, WORD, FLOAT, ZERO, FILL, ALIGN,
-	SIZE, EXTERN, TYPE, SIZEOF, DEF, INCLUDE, TYPEINFO
+	SIZE, EXTERN, TYPE, SIZEOF, DEF, INCLUDE, TYPEINFO, OFFSET
 };
 
 // The array is to be ordered by instruction types!!!
