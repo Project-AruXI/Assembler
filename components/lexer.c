@@ -107,6 +107,8 @@ void lexLine(Lexer* lexer, const char* line) {
 		// printToken(tok);
 
 		lexer->prevToken = tok;
+		// Lexer needs the original
+		lexer->line = (sds) originalLine;
 		tok = getNextToken(lexer);
 	}
 
