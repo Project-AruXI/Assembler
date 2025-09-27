@@ -51,10 +51,16 @@ typedef enum {
 } debugLvl;
 
 void initScope(const char* fxnName);
-// void initConfig()
 
 void debug(debugLvl lvl, const char* fmsg, ...);
+void rdebug(debugLvl lvl, const char* fmsg, ...);
 
 #define log(fmt, ...) debug(DEBUG_BASIC, fmt, ##__VA_ARGS__)
+#define detail(fmt, ...) debug(DEBUG_DETAIL, fmt, ##__VA_ARGS__)
+#define trace(fmt, ...) debug(DEBUG_TRACE, fmt, ##__VA_ARGS__)
+
+#define rlog(fmt, ...) rdebug(DEBUG_BASIC, fmt, ##__VA_ARGS__)
+#define rdetail(fmt, ...) rdebug(DEBUG_DETAIL, fmt, ##__VA_ARGS__)
+#define rtrace(fmt, ...) rdebug(DEBUG_TRACE, fmt, ##__VA_ARGS__)
 
 #endif

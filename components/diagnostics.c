@@ -90,3 +90,22 @@ void debug(debugLvl lvl, const char* fmsg, ...) {
 	fprintf(stderr, "%s@%s::%s%s\n", color, FN_SCOPE, buffer, RESET);
 #endif
 }
+
+void rdebug(debugLvl lvl, const char *fmsg, ...) {
+#ifdef DEBUG
+	va_list args;
+	va_start(args, fmsg);
+
+	formatMessage(fmsg, args);
+
+	char* color;
+	switch (lvl) {
+		case DEBUG_BASIC: color = CYAN; break;
+		case DEBUG_DETAIL: color = BLUE; break;
+		case DEBUG_TRACE: color = MAGENTA; break;
+		default: color = CYAN; break;
+	}
+
+	fprintf(stderr, "%s%s%s\n", color, buffer, RESET);
+#endif
+}
