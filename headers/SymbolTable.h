@@ -105,7 +105,7 @@ typedef struct SymbolTable {
 SymbolTable* initSymbolTable();
 void deinitSymbolTable(SymbolTable* table);
 
-symb_entry_t* initSymbolEntry(const char* name, SYMBFLAGS flags, SString* source, int linenum);
+symb_entry_t* initSymbolEntry(const char* name, SYMBFLAGS flags, Node* expr, uint32_t val, SString* source, int linenum);
 void deinitSymbolEntry(symb_entry_t* entry);
 
 void addSymbolEntry(SymbolTable* table, symb_entry_t* entry);
@@ -116,5 +116,6 @@ symb_entry_t* getSymbolEntry(SymbolTable* table, const char* name);
 void updateSymbolEntry(symb_entry_t* entry, SYMBFLAGS flags, uint32_t value);
 
 void displaySymbolTable(SymbolTable* table);
+void displaySymbolEntry(symb_entry_t* entry);
 
 #endif

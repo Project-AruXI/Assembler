@@ -25,7 +25,7 @@ void deinitSymbolTable(SymbolTable* table) {
 	free(table);
 }
 
-symb_entry_t* initSymbolEntry(const char* name, SYMBFLAGS flags, SString* source, int linenum) {
+symb_entry_t* initSymbolEntry(const char* name, SYMBFLAGS flags, Node* expr, uint32_t val, SString* source, int linenum) {
 	symb_entry_t* entry = (symb_entry_t*)malloc(sizeof(symb_entry_t));
 	if (!entry) emitError(ERR_MEM, NULL, "Failed to allocate memory for symbol entry.");
 
@@ -35,7 +35,8 @@ symb_entry_t* initSymbolEntry(const char* name, SYMBFLAGS flags, SString* source
 	entry->source = source; // Maybe have the entry use its own copy of SString
 	entry->linenum = linenum;
 
-	entry->value.expr = NULL;
+	if (!expr) entry->value.val = val;
+	else entry->value.expr = expr;
 
 	entry->references.refs = (symb_entry_ref_t**) malloc(sizeof(symb_entry_ref_t*) * 4);
 	if (!entry->references.refs) emitError(ERR_MEM, NULL, "Failed to allocate memory for symbol entry references.");
@@ -96,18 +97,80 @@ void updateSymbolEntry(symb_entry_t* entry, SYMBFLAGS flags, uint32_t value) {
 
 // TODO: find a better layout
 void displaySymbolTable(SymbolTable* table) {
+	initScope("");
+
+	log("Symbol Table (size: %u, capacity: %u):", table->size, table->capacity);
 	for (uint32_t i = 0; i < table->size; ++i) {
 		symb_entry_t* entry = table->entries[i];
-		log("Symbol: %s, Flags: 0x%X, Size: %u, Defined at line %d\n", entry->name, entry->flags, entry->size, entry->linenum);
-		if (GET_EXPRESSION(entry->flags)) {
-			log("  Value: [Expression AST]\n");
-		} else {
-			log("  Value: %u\n", entry->value.val);
-		}
-		log("  References (%d):\n", entry->references.refcount);
-		for (int j = 0; j < entry->references.refcount; ++j) {
-			symb_entry_ref_t* ref = entry->references.refs[j];
-			log("    Line %d\n", ref->linenum);
-		}
+		displaySymbolEntry(entry);
+	}
+}
+
+static char* flagToString(SYMBFLAGS flags) {
+	static char buffer[64];
+	buffer[0] = '\0';
+
+	// Main type
+	switch (GET_MAIN_TYPE(flags)) {
+		case M_NONE: strcat(buffer, "M_NONE "); break;
+		case M_ABS: strcat(buffer, "M_ABS "); break;
+		case M_FUNC: strcat(buffer, "M_FUNC "); break;
+		case M_OBJ: strcat(buffer, "M_OBJ "); break;
+		default: strcat(buffer, "M_UNKNOWN "); break;
+	}
+
+	// Sub type
+	switch (GET_SUB_TYPE(flags)) {
+		case T_NONE: strcat(buffer, "T_NONE "); break;
+		case T_ARR: strcat(buffer, "T_ARR "); break;
+		case T_STRUCT: strcat(buffer, "T_STRUCT "); break;
+		case T_UNION: strcat(buffer, "T_UNION "); break;
+		case T_PTR: strcat(buffer, "T_PTR "); break;
+		default: strcat(buffer, "T_UNKNOWN "); break;
+	}
+
+	// Expression or value
+	if (GET_EXPRESSION(flags)) strcat(buffer, "E_EXPR ");
+	else strcat(buffer, "E_VAL ");
+
+	// Section
+	switch (GET_SECTION(flags)) {
+		case S_DATA: strcat(buffer, "S_DATA "); break;
+		case S_CONST: strcat(buffer, "S_CONST "); break;
+		case S_BSS: strcat(buffer, "S_BSS "); break;
+		case S_TEXT: strcat(buffer, "S_TEXT "); break;
+		case S_EVT: strcat(buffer, "S_EVT "); break;
+		case S_IVT: strcat(buffer, "S_IVT "); break;
+		case S_UNDEF: strcat(buffer, "S_UNDEF "); break;
+		default: strcat(buffer, "S_UNKNOWN "); break;
+	}
+
+	// Locality
+	if (GET_LOCALITY(flags)) strcat(buffer, "L_GLOB ");
+	else strcat(buffer, "L_LOC ");
+
+	// Referenced
+	if (GET_REFERENCED(flags)) strcat(buffer, "R_REF ");
+	else strcat(buffer, "R_NREF ");
+
+	// Defined
+	if (GET_DEFINED(flags)) strcat(buffer, "D_DEF ");
+	else strcat(buffer, "D_UNDEF ");
+
+	return buffer;
+}
+
+void displaySymbolEntry(symb_entry_t* entry) {
+	log("Symbol: `%s`; Flags: [%s]; Size: %u; Defined at line %d (`%s`)", 
+			entry->name, flagToString(entry->flags), entry->size, entry->linenum, ssGetString(entry->source));
+	if (GET_EXPRESSION(entry->flags)) {
+		log("  Value: [Expression AST]"); // Maybe have a way to translate expression AST to string
+	} else {
+		log("  Value: %u", entry->value.val);
+	}
+	log("  References (%d):", entry->references.refcount);
+	for (int j = 0; j < entry->references.refcount; ++j) {
+		symb_entry_ref_t* ref = entry->references.refs[j];
+		log("    Line %d", ref->linenum);
 	}
 }
