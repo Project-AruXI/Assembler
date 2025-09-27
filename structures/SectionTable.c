@@ -2,6 +2,7 @@
 #include <stdlib.h>
 
 #include "SectionTable.h"
+#include "diagnostics.h"
 
 
 SectionTable* initSectionTable() {
@@ -18,32 +19,29 @@ SectionTable* initSectionTable() {
 }
 
 void displaySectionTable(SectionTable* sectTable) {
-	// debug(DEBUG_TRACE, "Section Table (active section: %d):\n", sectTable->activeSection);
+	const char* activeSectionStr = NULL;
+	switch (sectTable->activeSection) {
+		case DATA_SECT_N: activeSectionStr = "Data";  break;
+		case CONST_SECT_N: activeSectionStr = "Const"; break;
+		case BSS_SECT_N: activeSectionStr = "Bss";   break;
+		case TEXT_SECT_N: activeSectionStr = "Text";  break;
+		case EVT_SECT_N: activeSectionStr = "EVT";   break;
+		case IVT_SECT_N: activeSectionStr = "IVT";   break;
+		default: activeSectionStr = "Unknown"; break;
+	}
 
-	// debug(DEBUG_TRACE, "\tData Section (0):\n");
-	// debug(DEBUG_TRACE, "\t\tLocation Pointer: 0x%x\n", sectTable->entries[DATA].lp);
-	// debug(DEBUG_TRACE, "\t\tSize: 0x%x bytes\n", sectTable->entries[DATA].size);
-	// debug(DEBUG_TRACE, "\t\tIs present: %s\n", (sectTable->entries[DATA].present ? "true" : "false"));
-
-	// debug(DEBUG_TRACE, "\tConst Section (1):\n");
-	// debug(DEBUG_TRACE, "\t\tLocation Pointer: 0x%x\n", sectTable->entries[CONST].lp);
-	// debug(DEBUG_TRACE, "\t\tSize: 0x%x bytes\n", sectTable->entries[CONST].size);
-	// debug(DEBUG_TRACE, "\t\tIs present: %s\n", (sectTable->entries[CONST].present ? "true" : "false"));
-
-	// debug(DEBUG_TRACE, "\tBss Section (2):\n");
-	// debug(DEBUG_TRACE, "\t\tLocation Pointer: 0x%x\n", sectTable->entries[BSS].lp);
-	// debug(DEBUG_TRACE, "\t\tSize: 0x%x bytes\n", sectTable->entries[BSS].size);
-	// debug(DEBUG_TRACE, "\t\tIs present: %s\n", (sectTable->entries[BSS].present ? "true" : "false"));
-
-	// debug(DEBUG_TRACE, "\tText Section (3):\n");
-	// debug(DEBUG_TRACE, "\t\tLocation Pointer: 0x%x\n", sectTable->entries[TEXT].lp);
-	// debug(DEBUG_TRACE, "\t\tSize: 0x%x bytes\n", sectTable->entries[TEXT].size);
-	// debug(DEBUG_TRACE, "\t\tIs present: %s\n", (sectTable->entries[TEXT].present ? "true" : "false"));
-
-	// debug(DEBUG_TRACE, "\tEVT Section (4):\n");
-	// debug(DEBUG_TRACE, "\t\tLocation Pointer: 0x%x\n", sectTable->entries[EVT].lp);
-	// debug(DEBUG_TRACE, "\t\tSize: 0x%x bytes\n", sectTable->entries[EVT].size);
-	// debug(DEBUG_TRACE, "\t\tIs present: %s\n", (sectTable->entries[EVT].present ? "true" : "fa;se"));
+	rtrace("\n============= Section Table =============");
+	rtrace("Active Section: %s (%d)", activeSectionStr, sectTable->activeSection);
+	rtrace("-----------------------------------------");
+	rtrace("| %-7s | %-12s | %-10s |", "Section", "Location Ptr", "Size (bytes)");
+	rtrace("-----------------------------------------");
+	rtrace("| %-7s | 0x%08x   | %-12u |", "Data",  sectTable->entries[DATA_SECT_N].lp,  sectTable->entries[DATA_SECT_N].size);
+	rtrace("| %-7s | 0x%08x   | %-12u |", "Const", sectTable->entries[CONST_SECT_N].lp, sectTable->entries[CONST_SECT_N].size);
+	rtrace("| %-7s | 0x%08x   | %-12u |", "Bss",   sectTable->entries[BSS_SECT_N].lp,   sectTable->entries[BSS_SECT_N].size);
+	rtrace("| %-7s | 0x%08x   | %-12u |", "Text",  sectTable->entries[TEXT_SECT_N].lp,  sectTable->entries[TEXT_SECT_N].size);
+	rtrace("| %-7s | 0x%08x   | %-12u |", "EVT",   sectTable->entries[EVT_SECT_N].lp,   sectTable->entries[EVT_SECT_N].size);
+	rtrace("| %-7s | 0x%08x   | %-12u |", "IVT",   sectTable->entries[IVT_SECT_N].lp,   sectTable->entries[IVT_SECT_N].size);
+	rtrace("-----------------------------------------\n");
 }
 
 void deinitSectionTable(SectionTable* sectTable) {

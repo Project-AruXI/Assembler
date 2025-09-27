@@ -128,3 +128,39 @@ struct_field_t* getStructFieldByName(struct_root_t* structDef, const char* field
 
 	return NULL;
 }
+
+void displayStructTable(StructTable* structTable) {
+	if (structTable->size == 0) {
+		rtrace("\n[Struct Table is empty]\n");
+		return;
+	}
+	rtrace("\n==================== Struct Table ====================");
+	rtrace("Total Structs: %d", structTable->size);
+	rtrace("-----------------------------------------------------");
+	rtrace("| %-3s | %-20s | %-6s | %-6s |", "#", "Name", "Fields", "Size");
+	rtrace("-----------------------------------------------------");
+	for (int i = 0; i < structTable->size; i++) {
+		struct_root_t* s = structTable->structs[i];
+		rtrace("| %-3d | %-20s | %-6d | %-6d |", i, s->name, s->fieldCount, s->size);
+	}
+	rtrace("-----------------------------------------------------\n");
+}
+
+void displayStruct(struct_root_t* structDef) {
+	if (!structDef) {
+		rtrace("[Null struct definition]\n");
+		return;
+	}
+	rtrace("\n==================== Struct Definition ====================");
+	rtrace("Name: %s", structDef->name);
+	rtrace("Size: %d bytes", structDef->size);
+	rtrace("Fields: %d", structDef->fieldCount);
+	rtrace("----------------------------------------------------------");
+	rtrace("| %-3s | %-16s | %-8s | %-6s | %-6s |", "#", "Field Name", "Type", "Size", "Offset");
+	rtrace("----------------------------------------------------------");
+	for (int i = 0; i < structDef->fieldCount; i++) {
+		struct_field_t* f = structDef->fields[i];
+		rtrace("| %-3d | %-16s | %-8d | %-6d | %-6d |", i, f->name, f->type, f->size, f->offset);
+	}
+	rtrace("----------------------------------------------------------\n");
+}

@@ -53,5 +53,7 @@ struct_root_t* getStructByName(StructTable* structTable, const char* name);
 struct_root_t* getStructByIndex(StructTable* structTable, int index);
 struct_field_t* getStructFieldByName(struct_root_t* structDef, const char* fieldName);
 
+void displayStructTable(StructTable* structTable);
+void displayStruct(struct_root_t* structDef);
 
 #endif

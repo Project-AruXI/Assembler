@@ -95,15 +95,6 @@ void updateSymbolEntry(symb_entry_t* entry, SYMBFLAGS flags, uint32_t value) {
 	entry->value.val = value;
 }
 
-// TODO: find a better layout
-void displaySymbolTable(SymbolTable* table) {
-	rlog("Symbol Table (size: %u, capacity: %u):", table->size, table->capacity);
-	for (uint32_t i = 0; i < table->size; ++i) {
-		symb_entry_t* entry = table->entries[i];
-		displaySymbolEntry(entry);
-	}
-}
-
 static char* flagToString(SYMBFLAGS flags) {
 	static char buffer[64];
 	buffer[0] = '\0';
@@ -152,23 +143,54 @@ static char* flagToString(SYMBFLAGS flags) {
 	else strcat(buffer, "R_NREF ");
 
 	// Defined
-	if (GET_DEFINED(flags)) strcat(buffer, "D_DEF ");
-	else strcat(buffer, "D_UNDEF ");
+	if (GET_DEFINED(flags)) strcat(buffer, "D_DEF");
+	else strcat(buffer, "D_UNDEF");
 
 	return buffer;
 }
 
+void displaySymbolTable(SymbolTable* table) {
+		if (!table || table->size == 0) {
+			rtrace("\n[Symbol Table is empty]\n");
+			return;
+		}
+		rtrace("\n=================== Symbol Table ====================");
+		rtrace("Total Symbols: %u (capacity: %u)", table->size, table->capacity);
+		rtrace("-----------------------------------------------------------------------------------------------------------------");
+		rtrace("| %-3s | %-20s | %-45s | %-12s | %-8s | %-6s |", "#", "Name", "Flags", "Size (bytes)", "Line", "Refs");
+		rtrace("-----------------------------------------------------------------------------------------------------------------");
+		for (uint32_t i = 0; i < table->size; ++i) {
+			symb_entry_t* entry = table->entries[i];
+			rtrace("| %-3u | %-20s | %-45s | %-12u | %-8d | %-6d |",
+				i, entry->name, flagToString(entry->flags), entry->size, entry->linenum, entry->references.refcount);
+		}
+		rtrace("-----------------------------------------------------------------------------------------------------------------\n");
+
+		for (uint32_t i = 0; i < table->size; ++i) {
+			displaySymbolEntry(table->entries[i]);
+		}
+}
+
+
 void displaySymbolEntry(symb_entry_t* entry) {
-	rlog("Symbol: `%s`; Flags: [%s]; Size: %u; Defined at line %d (`%s`)", 
-			entry->name, flagToString(entry->flags), entry->size, entry->linenum, ssGetString(entry->source));
-	if (GET_EXPRESSION(entry->flags)) {
-		rlog("  Value: [Expression AST]"); // Maybe have a way to translate expression AST to string
-	} else {
-		rlog("  Value: 0x%x", entry->value.val);
-	}
-	rlog("  References (%d):", entry->references.refcount);
-	for (int j = 0; j < entry->references.refcount; ++j) {
-		symb_entry_ref_t* ref = entry->references.refs[j];
-		rlog("    Line %d", ref->linenum);
-	}
+		rtrace("\n------------------- Symbol Entry -------------------");
+		rtrace("Name:   %s", entry->name);
+		rtrace("Flags:  %s", flagToString(entry->flags));
+		rtrace("Size:   %u bytes", entry->size);
+		rtrace("Line:   %d", entry->linenum);
+		rtrace("Source: %s", ssGetString(entry->source));
+		if (GET_EXPRESSION(entry->flags)) {
+			rtrace("Value:  [Expression AST]");
+		} else {
+			rtrace("Value:  0x%x", entry->value.val);
+		}
+		rtrace("References (%d):", entry->references.refcount);
+		if (entry->references.refcount > 0) {
+			rtrace("  | %-3s | %-6s |", "#", "Line");
+			for (int j = 0; j < entry->references.refcount; ++j) {
+				symb_entry_ref_t* ref = entry->references.refs[j];
+				rtrace("  | %-3d | %-6d |", j, ref->linenum);
+			}
+		}
+		rtrace("----------------------------------------------------\n");
 }

@@ -29,7 +29,7 @@ typedef struct SectionTable {
 SectionTable* initSectionTable();
 void deinitSectionTable(SectionTable* sectTable);
 
-// void displaySectionTable(SectionTable* sectTable);
+void displaySectionTable(SectionTable* sectTable);
 
 
 #endif

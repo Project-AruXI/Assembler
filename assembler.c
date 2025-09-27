@@ -134,6 +134,8 @@ int main(int argc, char const* argv[]) {
 	rlog("\n");
 
 	displaySymbolTable(symbolTable);
+	displaySectionTable(sectionTable);
+	displayStructTable(structTable);
 
 
 
