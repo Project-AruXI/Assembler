@@ -38,7 +38,6 @@ void deinitLexer(Lexer* lexer) {
 		free(lexer->tokens[i]);
 	}
 	free(lexer->tokens);
-	sdsfree(lexer->line);
 	free(lexer);
 }
 
@@ -65,7 +64,6 @@ static void advance(Lexer* lexer) {
 
 void lexLine(Lexer* lexer, const char* line) {
 	initScope("lexLine");
-
 
 	// The lexer needs the newline at the end to properly insert the NEWLINE token
 	// However, each token uses a copy of the lexer's line as the source, which includes the newline
@@ -114,9 +112,14 @@ void lexLine(Lexer* lexer, const char* line) {
 
 	// Add the newline token at the end of the line
 	if (tok && tok->type == TK_NEWLINE) {
+		lexer->line = sourceLine;
 		addToken(lexer, tok);
 		// printToken(tok);
 	} else if (tok) deleteToken(tok);
+
+	// The line is ephemeral, `line` is managed by getline, and `sourceLine` is managed by the tokens and
+	//   the lexer loses ownership of it at the end of the line
+	lexer->line = NULL;
 }
 
 static void getString(Lexer* lexer, Token* token, linedata_ctx* linedata) {
@@ -592,7 +595,7 @@ Token* getNextToken(Lexer* lexer) {
 
 void printToken(Token* token) {
 	if (!token) {
-		printf("NULL token\n");
+		rlog("NULL token\n");
 		return;
 	}
 
@@ -641,7 +644,7 @@ void printToken(Token* token) {
 		default: typeStr = "UNKNOWN_TYPE"; break;
 	}
 
-	log("Token(type=%s, lexeme=`%s`, line=%d)", typeStr, token->lexeme, token->linenum);
+	rlog("Token(type=%s, lexeme=`%s`, line=%d)", typeStr, token->lexeme, token->linenum);
 }
 
 Token* getToken(Lexer* lexer, int index) {

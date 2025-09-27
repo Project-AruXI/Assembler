@@ -72,6 +72,58 @@ void freeAST(Node* root) {
 	free(root);
 }
 
+void printAST(Node* root) {
+	if (!root) return;
+
+	// Print the current node
+	rlog("Node(type=%d, astNodeType=%d, token=`%s`)", root->nodeType, root->astNodeType, root->token ? root->token->lexeme : "NULL");
+
+	// Recursively print children based on node type
+	switch (root->nodeType) {
+		case ND_INSTRUCTION:
+			// Print instruction-specific details if needed
+			break;
+		case ND_DIRECTIVE: {
+			DirctvNode* dirNode = root->nodeData.directive;
+			if (!dirNode) break;
+
+			if (dirNode->unary.data) {
+				rlog("  Unary Directive Data:\n");
+				printAST(dirNode->unary.data);
+			}
+			if (dirNode->binary.symb || dirNode->binary.data) {
+				rlog("  Binary Directive Data:\n");
+				if (dirNode->binary.symb) {
+					rlog("    Symbol:\n");
+					printAST(dirNode->binary.symb);
+				}
+				if (dirNode->binary.data) {
+					rlog("    Data:\n");
+					printAST(dirNode->binary.data);
+				}
+			}
+			if (dirNode->nary.exprCount > 0) {
+				rlog("  N-ary Directive Expressions:\n");
+				for (int i = 0; i < dirNode->nary.exprCount; i++) {
+					printAST(dirNode->nary.exprs[i]);
+				}
+			}
+			break;
+		}
+		case ND_SYMB:
+			// Print symbol-specific details if needed
+			break;
+		case ND_NUMBER:
+			// Print number-specific details if needed
+			break;
+		case ND_STRING:
+			// Print string-specific details if needed
+			break;
+		default:
+			break;
+	}
+}
+
 InstrNode* initInstructionNode() {
 	return NULL;
 }
@@ -99,6 +151,8 @@ DirctvNode* initDirectiveNode() {
 }
 
 void deinitDirectiveNode(DirctvNode* dirctvNode) {
+	if (!dirctvNode) return; // Only time this should happen is if the directive has no arguments at all
+
 	if (dirctvNode->unary.data) freeAST(dirctvNode->unary.data);
 	if (dirctvNode->binary.symb) freeAST(dirctvNode->binary.symb);
 	if (dirctvNode->binary.data) freeAST(dirctvNode->binary.data);

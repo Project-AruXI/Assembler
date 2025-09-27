@@ -97,9 +97,7 @@ void updateSymbolEntry(symb_entry_t* entry, SYMBFLAGS flags, uint32_t value) {
 
 // TODO: find a better layout
 void displaySymbolTable(SymbolTable* table) {
-	initScope("");
-
-	log("Symbol Table (size: %u, capacity: %u):", table->size, table->capacity);
+	rlog("Symbol Table (size: %u, capacity: %u):", table->size, table->capacity);
 	for (uint32_t i = 0; i < table->size; ++i) {
 		symb_entry_t* entry = table->entries[i];
 		displaySymbolEntry(entry);
@@ -161,16 +159,16 @@ static char* flagToString(SYMBFLAGS flags) {
 }
 
 void displaySymbolEntry(symb_entry_t* entry) {
-	log("Symbol: `%s`; Flags: [%s]; Size: %u; Defined at line %d (`%s`)", 
+	rlog("Symbol: `%s`; Flags: [%s]; Size: %u; Defined at line %d (`%s`)", 
 			entry->name, flagToString(entry->flags), entry->size, entry->linenum, ssGetString(entry->source));
 	if (GET_EXPRESSION(entry->flags)) {
-		log("  Value: [Expression AST]"); // Maybe have a way to translate expression AST to string
+		rlog("  Value: [Expression AST]"); // Maybe have a way to translate expression AST to string
 	} else {
-		log("  Value: %u", entry->value.val);
+		rlog("  Value: 0x%x", entry->value.val);
 	}
-	log("  References (%d):", entry->references.refcount);
+	rlog("  References (%d):", entry->references.refcount);
 	for (int j = 0; j < entry->references.refcount; ++j) {
 		symb_entry_ref_t* ref = entry->references.refs[j];
-		log("    Line %d", ref->linenum);
+		rlog("    Line %d", ref->linenum);
 	}
 }

@@ -107,6 +107,8 @@ static void parseLabel(Parser* parser) {
 }
 
 static void parseIdentifier(Parser* parser) {
+	initScope("parseIdentifier");
+
 	emitWarning(WARN_UNIMPLEMENTED, NULL, "Identifier parsing not yet implemented.");
 	parser->currentTokenIndex++;
 	return;
@@ -138,8 +140,6 @@ static void parseDirective(Parser* parser) {
 	log("Parsing directive: `%s`. Set type to `%s`", directiveToken->lexeme, DIRECTIVES[directive]);
 
 	// The actions depend on the specific directive
-
-	// return;
 
 	switch (directive) {
 		case DATA: handleData(parser); break;
@@ -253,7 +253,6 @@ void parse(Parser* parser) {
 			default: emitError(ERR_INTERNAL, NULL, "Parser encountered unhandled token type: %s", token->lexeme);
 		}
 		currentTokenIndex = parser->currentTokenIndex;
-		// currentTokenIndex++;
 	}
 
 }

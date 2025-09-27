@@ -84,7 +84,7 @@ typedef struct ASTNode {
 Node* initASTNode(astNode_t astNodeType, node_t nodeType, Token* token, Node* parent);
 void setNodeData(Node* node, void* nodeData, node_t nodeType);
 void freeAST(Node* root);
-
+void printAST(Node* root);
 
 InstrNode* initInstructionNode();
 void deinitInstructionNode(InstrNode* instrNode);

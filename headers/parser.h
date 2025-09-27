@@ -19,7 +19,9 @@ typedef struct Parser {
 	int tokenCount;
 	int currentTokenIndex;
 
-	Node** asts;
+	// The parser owns the ASTs, all other references to its ASTs should not free them
+	// For example, the data table will hold references to the ASTs of the data in its entries, but these references are borrowed
+	Node** asts; // The top-level ASTs, each representing a logical line
 	int astCount;
 	int astCapacity;
 

@@ -57,7 +57,7 @@ char* parseArgs(int argc, char const* argv[]) {
 		exit(-1);
 	}
 
-	log("Output file: %s\n", config.outbin);
+	log("Output file: %s", config.outbin);
 
 	const char* allowedExts[] = { ".s", ".as", ".ars", ".adecl" };
 
@@ -100,11 +100,12 @@ int main(int argc, char const* argv[]) {
 	free(line);
 	fclose(source);
 
-	log("\n\nLexed %d lines. Read %d tokens:", lexer->linenum, lexer->tokenCount);
+	rlog("\nLexed %d lines. Read %d tokens:", lexer->linenum, lexer->tokenCount);
 	// Show contents of lexer's tokens
 	for (int i = 0; i < lexer->tokenCount; i++) {
 		printToken(lexer->tokens[i]);
 	}
+	rlog("\n");
 
 	// Finished lexing, now parse
 
@@ -124,7 +125,15 @@ int main(int argc, char const* argv[]) {
 
 	parse(parser);
 
+	rlog("\n\n");
+	rlog("Parsed %d ASTs:", parser->astCount);
+	for (int i = 0; i < parser->astCount; i++) {
+		rlog("AST %d:", i);
+		printAST(parser->asts[i]);
+	}
+	rlog("\n");
 
+	displaySymbolTable(symbolTable);
 
 
 

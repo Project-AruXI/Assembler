@@ -148,11 +148,9 @@ void handleByte(Parser* parser, Node* directiveRoot) {
 
 		// Assume currentTokenIndex was updated in parseExpression for now
 		nextToken = parser->tokens[parser->currentTokenIndex]; // This better be the comma or newline
-		log("Next token after parsing expression in .byte directive: `%s`", nextToken->lexeme);
 		if (nextToken->type == TK_NEWLINE) {
 			// End of the directive
 			parser->currentTokenIndex++; // Consume the newline
-			log("Next token after handleByte: `%s`", parser->tokens[parser->currentTokenIndex]->lexeme);
 			// The parser loops takes care of the newline
 			break;
 		} else if (nextToken->type == TK_COMMA) {
