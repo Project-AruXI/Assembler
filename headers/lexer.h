@@ -7,7 +7,7 @@
 
 
 typedef struct Lexer {
-	const char* line;
+	sds line;
 	int linenum;
 
 	Token** tokens;

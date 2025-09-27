@@ -37,6 +37,7 @@ void deinitLexer(Lexer* lexer) {
 		free(lexer->tokens[i]);
 	}
 	free(lexer->tokens);
+	sdsfree(lexer->line);
 	free(lexer);
 }
 
@@ -66,7 +67,7 @@ void lexLine(Lexer* lexer, const char* line) {
 
 	// log("Lexing line %d: `%s`", lexer->linenum, line);
 
-	lexer->line = line;
+	lexer->line = sdstrim(sdsnew(line), "\n"); // The lexer needs its own copy since the pointer `line` is managed by `getline`
 	lexer->linenum++;
 	lexer->currentPos = -1;
 	lexer->prevToken = NULL;
