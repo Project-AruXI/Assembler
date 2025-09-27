@@ -24,11 +24,11 @@ typedef struct Config {
 } Config;
 
 typedef enum {
-	WARN_NONE = 0x00,
-	WARN_UNUSED_SYMB = 1 << 0,
-	WARN_OVERFLOW = 1 << 1,
-	WARN_UNREACHABLE = 1 << 2,
-	WARN_ALL = 0xFF
+	WARN_FLAG_NONE = 0x00,
+	WARN_FLAG_UNUSED_SYMB = 1 << 0,
+	WARN_FLAG_OVERFLOW = 1 << 1,
+	WARN_FLAG_UNREACHABLE = 1 << 2,
+	WARN_FLAG_ALL = 0xFF
 } WarningFlags;
 
 typedef enum {

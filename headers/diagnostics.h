@@ -30,7 +30,8 @@ typedef enum {
 } errType;
 
 typedef enum {
-	WARN_UNREACHABLE
+	WARN_UNREACHABLE,
+	WARN_UNIMPLEMENTED
 } warnType;
 
 typedef struct LineData {
@@ -50,6 +51,8 @@ typedef enum {
 } debugLvl;
 
 void initScope(const char* fxnName);
+// void initConfig()
+
 void debug(debugLvl lvl, const char* fmsg, ...);
 
 #define log(fmt, ...) debug(DEBUG_BASIC, fmt, ##__VA_ARGS__)

@@ -9,7 +9,10 @@ typedef enum {
 	TK_NEWLINE,
 	TK_LABEL, // [label]:
 	TK_IDENTIFIER, // [identifier] (used for .type names, ie `.type Node, $obj` or .def, ie `next::Node.)
+
 	TK_DIRECTIVE, // .[directive]
+	
+
 	TK_INSTRUCTION, // [instruction]
 	TK_REGISTER, // [register]
 	TK_IMM, // #[immediate]
@@ -56,8 +59,8 @@ typedef struct Token {
 	SString* sstring;
 } Token;
 
-void deleteToken(Token* token);
-void deleteToken(Token* token) {
+static inline void deleteToken(Token* token);
+static inline void deleteToken(Token* token) {
 	if (token->lexeme) sdsfree(token->lexeme);
 	if (token->sstring) ssDestroySecuredString(token->sstring);
 	free(token);

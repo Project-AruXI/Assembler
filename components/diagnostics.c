@@ -4,9 +4,11 @@
 #include <stdbool.h>
 
 #include "diagnostics.h"
+#include "config.h"
 
 static char FN_SCOPE[64];
 static char buffer[164];
+static Config config;
 bool doWarn; // Whether to emit warnings
 
 // Treating warnings as error preceeds doWarn
@@ -31,8 +33,9 @@ static char* errnames[ERR_MISALIGNMENT + 1] = {
 	"MISALIGNMENT ERROR"
 };
 
-static char* warnnames[WARN_UNREACHABLE + 1] = {
-	"UNREACHABLE CODE"
+static char* warnnames[WARN_UNIMPLEMENTED + 1] = {
+	"UNREACHABLE CODE",
+	"UNIMPLEMENTED FEATURE"
 };
 
 static void formatMessage(const char* fmsg, va_list args) {
@@ -52,7 +55,7 @@ void emitError(errType err, linedata_ctx* linedata, const char* fmsg, ...) {
 
 
 void emitWarning(warnType warn, linedata_ctx* linedata, const char* fmsg, ...) {
-	if (!doWarn) return;
+	// if (!doWarn) return;
 
 	// Allow filtering of warning types
 

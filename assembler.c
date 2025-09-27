@@ -8,6 +8,7 @@
 #include "sds.h"
 #include "lexer.h"
 #include "config.h"
+#include "parser.h"
 
 Config config;
 
@@ -16,7 +17,7 @@ char* parseArgs(int argc, char const* argv[]) {
 	config.useDebugSymbols = false;
 	config.warningAsFatal = false;
 	config.outbin = "out.ao";
-	config.warnings = WARN_ALL; // Enable all warnings by default
+	config.warnings = WARN_FLAG_ALL; // Enable all warnings by default
 	config.enhancedFeatures = FEATURE_NONE; // Disable all enhanced features by default
 
 	bool warningAsFatal = false;
@@ -45,7 +46,7 @@ char* parseArgs(int argc, char const* argv[]) {
 
 	if (showVersion) {
 		printf("Aru Assembler version 1.0.0\n");
-		return 0;
+		exit(0);
 	}
 
 
@@ -53,7 +54,7 @@ char* parseArgs(int argc, char const* argv[]) {
 	if (argc - nparsed < 1) {
 		fprintf(stderr, "No input file specified.\n");
 		argparse_usage(&argparse);
-		return 1;
+		exit(-1);
 	}
 
 	log("Output file: %s\n", config.outbin);
@@ -96,6 +97,7 @@ int main(int argc, char const* argv[]) {
 
 		read = getline(&line, &n, source);
 	}
+	free(line);
 	fclose(source);
 
 	log("\n\nLexed %d lines. Read %d tokens:", lexer->linenum, lexer->tokenCount);
@@ -104,15 +106,33 @@ int main(int argc, char const* argv[]) {
 		printToken(lexer->tokens[i]);
 	}
 
-	
+	// Finished lexing, now parse
+
+	// First initialize the tables
+	SymbolTable* symbolTable = initSymbolTable();
+	SectionTable* sectionTable = initSectionTable();
+	StructTable* structTable = initStructTable();
+
+	ParserConfig pconfig = {
+		.warningAsFatal = config.warningAsFatal,
+		.warnings = config.warnings,
+		.enhancedFeatures = config.enhancedFeatures
+	};
+	Parser* parser = initParser(lexer->tokens, lexer->tokenCount, pconfig);
+	setTables(parser, sectionTable, symbolTable, structTable);
 
 
+	parse(parser);
 
 
 
 
 
 	deinitLexer(lexer);
+	deinitParser(parser);
+	deinitStructTable(structTable);
+	deinitSectionTable(sectionTable);
+	deinitSymbolTable(symbolTable);
 
 	return 0;
 }
