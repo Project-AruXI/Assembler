@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <ctype.h>
 
 #include "parser.h"
 #include "diagnostics.h"
@@ -53,14 +54,65 @@ static void addAst(Parser* parser, Node* ast) {
 static void parseLabel(Parser* parser) {
 	Token* labelToken = parser->tokens[parser->currentTokenIndex];
 
+	// Make sure the label is valid
+	if (labelToken->lexeme[0] != '_' && !isalpha(labelToken->lexeme[0])) {
+		linedata_ctx linedata = {
+			.linenum = labelToken->linenum,
+			.source = ssGetString(labelToken->sstring)
+		};
+		emitError(ERR_INVALID_LABEL, &linedata, "Label must start with an alphabetic character or underscore: `%s`", labelToken->lexeme);
+	}
+	
+	// Now, because of how the lexer works, the lexeme should have stopped at a non-alphanumeric character/underscore
+	// This shall be the big assumption here
+	// So next is just making sure the label does not use a reserved word	
+	// Need to compare against REGISTERS, DIRECTIVES, and INSTRUCTIONS array without caring for case
+	if (indexOf(REGISTERS, sizeof(REGISTERS)/sizeof(REGISTERS[0]), labelToken->lexeme) != -1 ||
+			indexOf(DIRECTIVES, sizeof(DIRECTIVES)/sizeof(DIRECTIVES[0]), labelToken->lexeme) != -1 ||
+			indexOf(INSTRUCTIONS, sizeof(INSTRUCTIONS)/sizeof(INSTRUCTIONS[0]), labelToken->lexeme) != -1) {
+		linedata_ctx linedata = {
+			.linenum = labelToken->linenum,
+			.source = ssGetString(labelToken->sstring)
+		};
+		emitError(ERR_INVALID_LABEL, &linedata, "Label cannot be a reserved word: `%s`", labelToken->lexeme);
+	}
 
+	// Ensure that the symbol has not been defined
+	// Note that this means an entry can exist but it is only in the case that it has been referenced before
+	// If it has been referenced, just updated the defined status
+
+	symb_entry_t* existingEntry = getSymbolEntry(parser->symbolTable, labelToken->lexeme);
+	if (existingEntry && GET_DEFINED(existingEntry->flags)) {
+		linedata_ctx linedata = {
+			.linenum = labelToken->linenum,
+			.source = ssGetString(labelToken->sstring)
+		};
+		emitError(ERR_REDEFINED, &linedata, "Symbol redefinition: `%s`. First defined at `%s`", labelToken->lexeme, ssGetString(existingEntry->source));
+	} else if (existingEntry) {
+		// Update the existing entry to be defined now
+		SET_DEFINED(existingEntry->flags);
+		existingEntry->linenum = labelToken->linenum;
+		existingEntry->source = labelToken->sstring; // Maybe have the entry use its own copy of SString
+		existingEntry->value.val = parser->sectionTable->entries[parser->sectionTable->activeSection].lp;
+	} else {
+		SYMBFLAGS flags = CREATE_FLAGS(M_ABS, T_NONE, E_VAL, parser->sectionTable->activeSection, L_LOC, R_NREF, D_DEF);
+		symb_entry_t* symbEntry = initSymbolEntry(labelToken->lexeme, flags, labelToken->sstring, labelToken->linenum);
+		if (!symbEntry) emitError(ERR_MEM, NULL, "Failed to create symbol table entry for label.");
+
+		// Add the symbol entry to the symbol table
+		addSymbolEntry(parser->symbolTable, symbEntry);
+	}
 }
 
 static void parseIdentifier(Parser* parser) {
-	
+	emitWarning(WARN_UNIMPLEMENTED, NULL, "Identifier parsing not yet implemented.");
+	return;
 }
 
 static void parseDirective(Parser* parser) {
+	emitWarning(WARN_UNIMPLEMENTED, NULL, "Directive parsing not yet implemented.");
+	return;
+
 	Token* directiveToken = parser->tokens[parser->currentTokenIndex];
 
 	Node* directiveRoot = initASTNode(AST_ROOT, ND_DIRECTIVE, directiveToken, NULL);
@@ -112,6 +164,8 @@ static void parseDirective(Parser* parser) {
 
 
 void parse(Parser* parser) {
+	initScope("parse");
+
 	int currentTokenIndex = 0;
 
 	while (currentTokenIndex < parser->tokenCount) {
@@ -128,6 +182,8 @@ void parse(Parser* parser) {
 				parseIdentifier(parser);
 				break;
 			case TK_DIRECTIVE:
+				// Similar to TK_IDENTIFIER, the lexer just bunched all of them under TK_DIRECTIVE
+				// This is where the specific directive is determined
 				parseDirective(parser);
 				break;
 			case TK_REGISTER:
@@ -162,6 +218,15 @@ void parse(Parser* parser) {
 			case TK_IF:
 			case TK_MAIN_TYPE:
 			case TK_SUB_TYPE:
+				// All of these token types typically follow a directive, an identifier, or a label
+				// So these are to be parsed in their respective contexts
+				// Encountering them at the top level is an issue
+				linedata_ctx linedata = {
+					.linenum = token->linenum,
+					.source = ssGetString(token->sstring)
+				};
+				emitError(ERR_INVALID_SYNTAX, &linedata, "Unexpected token at top level: `%s`", token->lexeme);
+				break;
 			default: emitError(ERR_INTERNAL, NULL, "Parser encountered unhandled token type: %d", token->type);
 		}
 

@@ -44,10 +44,10 @@ typedef struct SymbolTable {
 
 
 /**
-	| 15-11 | 10 | 9 | 8 | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
-	| x     |  M | M | T | T | E | S | S | S | L | R | D |
+	| 15-12 | 11 | 10 | 9 | 8 | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
+	| x     |  M |  M | T | T | T | E | S | S | S | L | R | D |
 	M: The main type of symbol. `00` for none (extern or unknown), `01` for absolute, `10` for function, `11` for object
-	T: The subtype of symbol, depending on M. `00` for array, `01` for struct, `10` for union, `11` for pointer
+	T: The subtype of symbol, depending on M. `00` for none, `01` for array, `10` for struct, `11` for union, `100` for pointer
 	E: Whether the symbol hold an expression AST or a value. `0` for value, `1` for expression
 	S: The section the symbol is defined in. `00` for data, `01` for const, `10` for  bss, `11` for text, `100` for evt, `101` for ivt, `111` for undefined.
 	L: The locality of the symbol. `0` for local, and `1` for global.
@@ -59,10 +59,11 @@ typedef struct SymbolTable {
 #define M_ABS 0b01 // Absolute number
 #define M_FUNC 0b10 // Function
 #define M_OBJ 0b11 // Object
-#define T_ARR 0b00 // Array
-#define T_STRUCT 0b01 // Struct
-#define T_UNION 0b10 // Union
-#define T_PTR 0b11 // Pointer
+#define T_NONE 0b00 // No subtype
+#define T_ARR  0b01 // Array
+#define T_STRUCT 0b10 // Struct
+#define T_UNION 0b11 // Union
+#define T_PTR  0b100 // Pointer
 #define S_DATA 0b000 // data section
 #define S_CONST 0b001 // const section
 #define S_BSS 0b010 // bss section
@@ -80,18 +81,18 @@ typedef struct SymbolTable {
 #define D_DEF 1
 
 
-#define CREATE_FLAGS(m, t, e, s, l, r, d) ((m << 9) | (t << 7) | (e << 6) | (s << 3) | (l << 2) | (r << 1) | (d << 0))
+#define CREATE_FLAGS(m, t, e, s, l, r, d) ((m << 10) | (t << 7) | (e << 6) | (s << 3) | (l << 2) | (r << 1) | (d << 0))
 
-#define GET_MAIN_TYPE(flags) ((flags >> 9) & 0b11)
-#define GET_SUB_TYPE(flags) ((flags >> 7) & 0b11)
+#define GET_MAIN_TYPE(flags) ((flags >> 10) & 0b11)
+#define GET_SUB_TYPE(flags) ((flags >> 7) & 0b111)
 #define GET_EXPRESSION(flags) ((flags >> 6) & 0b1)
 #define GET_SECTION(flags) ((flags >> 3) & 0b111)
 #define GET_LOCALITY(flags) ((flags >> 2) & 0b1)
 #define GET_REFERENCED(flags) ((flags >> 1) & 0b1)
 #define GET_DEFINED(flags) ((flags >> 0) & 0b1)
 
-#define SET_MAIN_TYPE(flags, type) ((flags & ~(0b11 << 9)) | ((type & 0b11) << 9)) // Sets the type to the given type
-#define SET_SUB_TYPE(flags, type) ((flags & ~(0b11 << 7)) | ((type & 0b11) << 7)) // Sets the subtype to the given type
+#define SET_MAIN_TYPE(flags, type) ((flags & ~(0b11 << 10)) | ((type & 0b11) << 10)) // Sets the type to the given type
+#define SET_SUB_TYPE(flags, type) ((flags & ~(0b111 << 7)) | ((type & 0b111) << 7)) // Sets the subtype to the given type
 #define SET_EXPRESSION(flags) (flags |= (1 << 6)) // Sets the expression flag to 1
 #define SET_SECTION(flags, section) ((flags & ~(0b111 << 3)) | ((section & 0b111) << 3)) // Sets the section to the given section
 #define SET_LOCALITY(flags) (flags |= (1 << 2)) // Sets the locality flag to 1 for global
