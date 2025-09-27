@@ -9,6 +9,7 @@
 #include "sds.h"
 #include "libsecuredstring.h"
 
+
 Lexer* initLexer() {
 	Lexer* lexer = (Lexer*) malloc(sizeof(Lexer));
 	if (!lexer) emitError(ERR_MEM, NULL, "Failed to allocate memory for lexer.");
@@ -65,9 +66,19 @@ static void advance(Lexer* lexer) {
 void lexLine(Lexer* lexer, const char* line) {
 	initScope("lexLine");
 
-	// log("Lexing line %d: `%s`", lexer->linenum, line);
 
-	lexer->line = sdstrim(sdsnew(line), "\n"); // The lexer needs its own copy since the pointer `line` is managed by `getline`
+	// The lexer needs the newline at the end to properly insert the NEWLINE token
+	// However, each token uses a copy of the lexer's line as the source, which includes the newline
+	// To keep the newline but also ignore it, temporaries will be used
+	// It also helps making a new string for the source line as `line` is managed by `getline`
+	
+	const char* originalLine = line; // The line that has the newline
+	char* sourceLine = sdstrim(sdsnew(line), "\n"); // The line to save as the source line
+
+	// log("Lexing line %d: `%s`", lexer->linenum, sourceLine);
+
+	// Since the lexer first uses the line to get the tokens, it needs the original for the newline
+	lexer->line = (sds) originalLine;
 	lexer->linenum++;
 	lexer->currentPos = -1;
 	lexer->prevToken = NULL;
@@ -90,12 +101,20 @@ void lexLine(Lexer* lexer, const char* line) {
 			return;
 		}
 
+		// addToken now needs the source line without the newline
+		lexer->line = sourceLine;
 		addToken(lexer, tok);
-		printToken(tok);
+		// printToken(tok);
 
 		lexer->prevToken = tok;
 		tok = getNextToken(lexer);
 	}
+
+	// Add the newline token at the end of the line
+	if (tok && tok->type == TK_NEWLINE) {
+		addToken(lexer, tok);
+		// printToken(tok);
+	} else if (tok) deleteToken(tok);
 }
 
 static void getString(Lexer* lexer, Token* token, linedata_ctx* linedata) {
@@ -214,6 +233,8 @@ Token* getNextToken(Lexer* lexer) {
 		advance(lexer);
 	}
 
+	// debug(DEBUG_TRACE, "Current char: '%c' (0x%x) at pos %d", lexer->currentChar, lexer->currentChar, lexer->currentPos);
+
 	switch (lexer->currentChar) {
 		case '%':
 			token->type = TK_COMMENT;
@@ -221,7 +242,7 @@ Token* getNextToken(Lexer* lexer) {
 			return token;
 		case '\n':
 			token->type = TK_NEWLINE;
-			token->lexeme = sdsnew("\n");
+			token->lexeme = sdsnew("NEWLINE");
 			return token;
 		case '\0':
 			token->type = TK_EOF;
