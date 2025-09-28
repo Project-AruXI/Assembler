@@ -156,6 +156,7 @@ static void parseDirective(Parser* parser) {
 			parser->currentTokenIndex++;
 			emitWarning(WARN_UNIMPLEMENTED, &linedata, "Directive `%s` not yet implemented!", directiveToken->lexeme);
 			break;
+
 		case STRING: handleString(parser, directiveRoot); break;
 		case BYTE: handleByte(parser, directiveRoot); break;
 		case HWORD: handleHword(parser, directiveRoot); break;
@@ -163,13 +164,14 @@ static void parseDirective(Parser* parser) {
 		case FLOAT: handleFloat(parser, directiveRoot); break;
 		case ZERO:
 		case FILL:
+
 		case ALIGN:
 		case SIZE:
 		case EXTERN:
 		case TYPE:
 		case SIZEOF:
 		case DEF:
-		case INCLUDE:
+		case INCLUDE: handleInclude(parser); break;
 		case TYPEINFO:
 			parser->currentTokenIndex++;
 			emitWarning(WARN_UNIMPLEMENTED, &linedata, "Directive `%s` not yet implemented!", directiveToken->lexeme);
@@ -206,6 +208,7 @@ void parse(Parser* parser) {
 				// This is where the specific directive is determined
 				parseDirective(parser);
 				break;
+			case TK_MACRO:
 			case TK_REGISTER:
 			case TK_IMM:
 			case TK_COMMA:
@@ -233,7 +236,6 @@ void parse(Parser* parser) {
 			case TK_INTEGER:
 			case TK_FLOAT:
 			case TK_CHAR:
-			case TK_MACRO:
 			case TK_OUT:
 			case TK_IF:
 			case TK_MAIN_TYPE:

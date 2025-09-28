@@ -3,6 +3,8 @@
 
 #include <stdbool.h>
 
+#include "libsecuredstring.h"
+
 typedef enum {
 	BYTE_FT,
 	HWORD_FT,
@@ -17,6 +19,9 @@ typedef struct StructField {
 	int size; // The size (how many bits in takes up) of the field
 	int offset; // The offset of the field from the start
 	int structTypeIdx; // If field is struct, the index of that type in the struct table
+
+	SString* source; // The source file where the field was defined
+	int linenum; // The line number where the field was defined
 } struct_field_t;
 
 typedef struct StructRoot {
@@ -26,6 +31,9 @@ typedef struct StructRoot {
 	struct_field_t** fields; // The struct fields
 	int fieldCount;
 	int fieldCapacity;
+
+	SString* source; // The source file where the struct was defined
+	int linenum; // The line number where the struct was defined
 } struct_root_t;
 
 typedef struct StructDefTable {

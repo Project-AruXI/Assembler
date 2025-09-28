@@ -78,7 +78,7 @@ void handleType(Parser* parser, Node* directiveRoot);
 
 void handleAlign(Parser* parser, Node* directiveRoot);
 void handleExtern(Parser* parser, Node* directiveRoot);
-void handleInclude(Parser* parser, Node* directiveRoot);
+void handleInclude(Parser* parser);
 void handleDef(Parser* parser, Node* directiveRoot);
 void handleSizeof(Parser* parser, Node* directiveRoot);
 

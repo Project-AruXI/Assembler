@@ -4,6 +4,8 @@
 #include "diagnostics.h"
 #include "expr.h"
 #include "reserved.h"
+#include "adecl.h"
+#include "StructTable.h"
 
 
 void handleData(Parser* parser) {
@@ -571,8 +573,107 @@ void handleExtern(Parser *parser, Node *directiveRoot)
 {
 }
 
-void handleInclude(Parser *parser, Node *directiveRoot)
-{
+void handleInclude(Parser* parser) {
+	initScope("handleInclude");
+
+	Token* directiveToken = parser->tokens[parser->currentTokenIndex++];
+	linedata_ctx linedata = {
+		.linenum = directiveToken->linenum,
+		.source = ssGetString(directiveToken->sstring)
+	};
+
+	log("Handling .include directive at line %d", directiveToken->linenum);
+
+	// The directive is in the form of `.include "filename"`
+
+	Token* nextToken = parser->tokens[parser->currentTokenIndex];
+	if (nextToken->type == TK_NEWLINE) emitError(ERR_INVALID_SYNTAX, &linedata, "The `.include` directive must be followed by a filename.");
+	if (nextToken->type != TK_STRING) emitError(ERR_INVALID_SYNTAX, &linedata, "The `.include` directive must be followed by a string, got `%s`.", nextToken->lexeme);
+	sds filename = sdsnewlen(nextToken->lexeme + 1, sdslen(nextToken->lexeme) - 2);
+	if (!filename) emitError(ERR_MEM, NULL, "Failed to allocate memory for `.include` directive filename.");
+
+	// Leave the rest to the adecl module thing
+	FILE* adeclFile = openADECLFile(filename);
+	if (!adeclFile) emitError(ERR_IO, &linedata, "Failed to open file `%s` for `.include` directive.", filename);
+	
+	ADECL_ctx context = {
+		.parentParserConfig = parser->config,
+		.symbolTable = parser->symbolTable,
+		.structTable = parser->structTable,
+		.asts = NULL,
+		.astCapacity = 0,
+		.astCount = 0
+	};
+	lexParseADECLFile(adeclFile, &context);
+
+	// Now, merge the ASTs, symbol table, and struct table
+
+	for (int i = 0; i < context.astCount; i++) {
+		parser->asts = nodeArrayInsert(parser->asts, &parser->astCapacity, &parser->astCount, context.asts[i]);
+		if (!parser->asts) emitError(ERR_MEM, NULL, "Failed to reallocate memory for ASTs after processing `.include` directive.");
+	}
+
+	for (int i = 0; i < context.symbolTable->size; i++) {
+		symb_entry_t* entry = context.symbolTable->entries[i];
+		symb_entry_t* existingEntry = getSymbolEntry(parser->symbolTable, entry->name);
+		if (existingEntry) {
+			// If the existing entry is defined and the new one is also defined, error
+			if (GET_DEFINED(existingEntry->flags) && GET_DEFINED(entry->flags)) {
+				emitError(ERR_REDEFINED, &linedata, "Symbol redefinition from `.include` directive: `%s`. First defined at `%s`", entry->name, ssGetString(existingEntry->source));
+			}
+			// Otherwise, merge the entries
+			// If the new entry is defined, update the existing one to be defined
+			if (GET_DEFINED(entry->flags)) {
+				SET_DEFINED(existingEntry->flags);
+				existingEntry->value = entry->value;
+				existingEntry->linenum = entry->linenum;
+				existingEntry->source = entry->source;
+			}
+			// If the new entry is global, update the existing one to be global
+			if (GET_LOCALITY(entry->flags) == L_GLOB) {
+				SET_LOCALITY(existingEntry->flags);
+			}
+			// Merge references
+			for (int j = 0; j < entry->references.refcount; j++) {
+				addSymbolReference(existingEntry, entry->references.refs[j]->source, entry->references.refs[j]->linenum);
+			}
+		} else {
+			// Just add the new entry as is
+			symb_entry_t* newEntry = initSymbolEntry(entry->name, entry->flags, entry->value.expr, entry->value.val, entry->source, entry->linenum);
+			for (int j = 0; j < entry->references.refcount; j++) {
+				addSymbolReference(newEntry, entry->references.refs[j]->source, entry->references.refs[j]->linenum);
+			}
+			addSymbolEntry(parser->symbolTable, newEntry);
+		}
+	}
+	// Safe to free the table????
+	deinitSymbolTable(context.symbolTable);
+
+	for (int i = 0; i < context.structTable->size; i++) {
+		struct_root_t* structRoot = context.structTable->structs[i];
+		struct_root_t* existingStruct = getStructByName(parser->structTable, structRoot->name);
+		if (existingStruct) {
+			emitError(ERR_REDEFINED, &linedata, "Struct redefinition from `.include` directive: `%s`. First defined at `%s`", structRoot->name, ssGetString(existingStruct->source));
+		} else {
+			// Just add the new struct as is
+			struct_root_t* newStruct = initStruct(structRoot->name);
+			for (int j = 0; j < structRoot->fieldCount; j++) {
+				struct_field_t* field = structRoot->fields[j];
+				struct_field_t* newField = initStructField(field->name, field->type, field->offset, field->size, field->structTypeIdx);
+				newField->source = field->source;
+				newField->linenum = field->linenum;
+				addStructField(newStruct, newField);
+			}
+			newStruct->size = structRoot->size;
+			newStruct->source = structRoot->source;
+			newStruct->linenum = structRoot->linenum;
+			addStruct(parser->structTable, newStruct);
+		}
+		
+	}
+	deinitStructTable(context.structTable);
+
+	free(context.asts);
 }
 
 void handleDef(Parser *parser, Node *directiveRoot)
