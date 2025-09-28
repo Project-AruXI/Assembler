@@ -59,6 +59,9 @@ void freeAST(Node* root) {
 		case ND_INSTRUCTION:
 			deinitInstructionNode(root->nodeData.instruction);
 			break;
+		case ND_REGISTER:
+			deinitRegisterNode(root->nodeData.reg);
+			break;
 		case ND_DIRECTIVE:
 			deinitDirectiveNode(root->nodeData.directive);
 			break;
@@ -66,10 +69,19 @@ void freeAST(Node* root) {
 			deinitSymbolNode(root->nodeData.symbol);
 			break;
 		case ND_NUMBER:
-			// deinitNumberNode(root->number); --- IGNORE ---
+			deinitNumberNode(root->nodeData.number);
 			break;
 		case ND_STRING:
-			// deinitStringNode(root->string); --- IGNORE ---
+			deinitStringNode(root->nodeData.string);
+			break;
+		case ND_OPERATOR:
+			deinitOperatorNode(root->nodeData.operator);
+			break;
+		case ND_TYPE:
+			deinitTypeNode(root->nodeData.type);
+			break;
+		case ND_UNKNOWN:
+			// Nothing to free, as generic is not owned by the AST
 			break;
 		default:
 			emitError(ERR_INTERNAL, NULL, "Invalid node type in freeAST.");
@@ -219,6 +231,12 @@ InstrNode* initInstructionNode() {
 void deinitInstructionNode(InstrNode* instrNode) {
 }
 
+RegNode* initRegisterNode() {
+	return NULL;
+}
+
+void deinitRegisterNode(RegNode* regNode) {
+}
 
 DirctvNode* initDirectiveNode() {
 	DirctvNode* node = (DirctvNode*) malloc(sizeof(DirctvNode));
@@ -279,6 +297,7 @@ SymbNode* initSymbolNode(int symbTableIndex, uint32_t value) {
 }
 
 void deinitSymbolNode(SymbNode* symbNode) {
+	free(symbNode);
 }
 
 
@@ -287,6 +306,7 @@ NumNode* initNumberNode() {
 }
 
 void deinitNumberNode(NumNode* numNode) {
+	free(numNode);
 }
 
 
@@ -304,6 +324,8 @@ StrNode* initStringNode(sds value, int length) {
 }
 
 void deinitStringNode(StrNode* strNode) {
+	sdsfree(strNode->value);
+	free(strNode);
 }
 
 
@@ -312,6 +334,11 @@ OpNode* initOperatorNode() {
 }
 
 void deinitOperatorNode(OpNode* opNode) {
+	// Very risky maneuver here, will free `left` and `right`, regardless it the operator is unary or binary
+	// This very likely might lead to a segfault :(
+	if (opNode->data.binary.left) freeAST(opNode->data.binary.left);
+	if (opNode->data.binary.right) freeAST(opNode->data.binary.right);
+	free(opNode);
 }
 
 TypeNode* initTypeNode() {
@@ -319,4 +346,5 @@ TypeNode* initTypeNode() {
 }
 
 void deinitTypeNode(TypeNode* typeNode) {
+	free(typeNode);
 }
