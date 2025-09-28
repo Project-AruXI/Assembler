@@ -215,7 +215,7 @@ void deinitSymbolNode(SymbNode* symbNode);
 
 
 
-NumNode* initNumberNode();
+NumNode* initNumberNode(NumType type, int32_t intValue, float floatValue);
 void deinitNumberNode(NumNode* numNode);
 
 

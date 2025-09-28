@@ -301,7 +301,29 @@ void deinitSymbolNode(SymbNode* symbNode) {
 }
 
 
-NumNode* initNumberNode() {
+NumNode* initNumberNode(NumType type, int32_t intValue, float floatValue) {
+	NumNode* numNode = (NumNode*) malloc(sizeof(NumNode));
+	if (!numNode) emitError(ERR_MEM, NULL, "Failed to allocate memory for number node.");
+
+	numNode->type = type;
+	switch (type) {
+		case NTYPE_INT8:
+			numNode->value.int8Value = (int8_t) intValue;
+			break;
+		case NTYPE_INT16:
+			numNode->value.int16Value = (int16_t) intValue;
+			break;
+		case NTYPE_INT32:
+			numNode->value.int32Value = (int32_t) intValue;
+			break;
+		case NTYPE_FLOAT:
+			numNode->value.floatValue = floatValue;
+			break;
+		default:
+			emitError(ERR_INTERNAL, NULL, "Invalid number type in initNumberNode.");
+			break;
+	}
+
 	return NULL;
 }
 

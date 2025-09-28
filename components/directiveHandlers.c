@@ -486,8 +486,65 @@ void handleWord(Parser* parser, Node* directiveRoot) {
 	addDataEntry(parser->dataTable, wordsDataEntry, parser->sectionTable->activeSection);
 }
 
-void handleFloat(Parser *parser, Node *directiveRoot)
-{
+void handleFloat(Parser* parser, Node* directiveRoot) {
+	initScope("handleFloat");
+
+	Token* directiveToken = parser->tokens[parser->currentTokenIndex++];
+	linedata_ctx linedata = {
+		.linenum = directiveToken->linenum,
+		.source = ssGetString(directiveToken->sstring)
+	};
+
+	directiveToken->type = TK_D_FLOAT;
+
+	DirctvNode* directiveData = initDirectiveNode();
+	setNodeData(directiveRoot, directiveData, ND_DIRECTIVE);
+
+	log("Handling .float directive at line %d", directiveToken->linenum);
+
+	// The directive is in the form of `.float float[, float...]`
+	// So there will be no expression trees, just number nodes
+	// These is still the need to have the array for the data table
+
+	Token* nextToken = parser->tokens[parser->currentTokenIndex];
+	if (nextToken->type == TK_NEWLINE) emitError(ERR_INVALID_SYNTAX, &linedata, "The `.float` directive must be followed by at least one float.");
+	if (nextToken->type != TK_FLOAT) emitError(ERR_INVALID_SYNTAX, &linedata, "The `.float` directive must be followed by a float, got `%s`.", nextToken->lexeme);
+
+	Node** floatArray = newNodeArray(2);
+	if (!floatArray) emitError(ERR_MEM, NULL, "Failed to allocate memory for `.float` directive floats.");
+	int floatArrayCapacity = 2;
+	int floatArrayCount = 0;
+
+	while (true) {
+		Node* floatNode = initASTNode(AST_LEAF, ND_NUMBER, nextToken, directiveRoot);
+		NumNode* numData = initNumberNode(NTYPE_FLOAT, 0, strtof(nextToken->lexeme, NULL));
+		addNaryDirectiveData(directiveData, floatNode);
+		setNodeData(floatNode, numData, ND_NUMBER);
+
+		floatArray = nodeArrayInsert(floatArray, &floatArrayCapacity, &floatArrayCount, floatNode);
+		if (!floatArray) emitError(ERR_MEM, NULL, "Failed to reallocate memory for `.float` directive floats.");
+
+		parser->currentTokenIndex++; // Consume the float token
+		nextToken = parser->tokens[parser->currentTokenIndex];
+		if (nextToken->type == TK_NEWLINE) {
+			parser->currentTokenIndex++; // Consume the newline
+			break;
+		} else if (nextToken->type != TK_COMMA) {
+			emitError(ERR_INVALID_SYNTAX, &linedata, "Expected `,` or newline after float in `.float` directive, got `%s`.", nextToken->lexeme);
+		} else {
+			// More floats to come
+			parser->currentTokenIndex++; // Consume the comma
+			nextToken = parser->tokens[parser->currentTokenIndex];
+			if (nextToken->type == TK_NEWLINE) emitError(ERR_INVALID_SYNTAX, &linedata, "Trailing comma in `.float` directive is not allowed.");
+			if (nextToken->type != TK_FLOAT) emitError(ERR_INVALID_SYNTAX, &linedata, "The `.float` directive must be followed by a float, got `%s`.", nextToken->lexeme);
+		}
+	}
+
+	uint32_t dataAddr = parser->sectionTable->entries[parser->sectionTable->activeSection].lp;
+	uint32_t dataSize = floatArrayCount * 4; // Each float is 4 bytes
+	data_entry_t* floatsDataEntry = initDataEntry(FLOATS_TYPE, dataAddr, dataSize, floatArray, floatArrayCount, floatArrayCapacity);
+	parser->sectionTable->entries[parser->sectionTable->activeSection].lp += dataSize;
+	addDataEntry(parser->dataTable, floatsDataEntry, parser->sectionTable->activeSection);
 }
 
 void handleZero(Parser *parser, Node *directiveRoot)

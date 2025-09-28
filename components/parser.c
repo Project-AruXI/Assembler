@@ -160,7 +160,7 @@ static void parseDirective(Parser* parser) {
 		case BYTE: handleByte(parser, directiveRoot); break;
 		case HWORD: handleHword(parser, directiveRoot); break;
 		case WORD: handleWord(parser, directiveRoot); break;
-		case FLOAT:
+		case FLOAT: handleFloat(parser, directiveRoot); break;
 		case ZERO:
 		case FILL:
 		case ALIGN:
