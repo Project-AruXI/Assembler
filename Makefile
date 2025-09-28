@@ -9,8 +9,8 @@ HEADERS = ./headers
 INCLUDES = -I$(HEADERS) -I$(COMMON)
 
 SRCS = assembler.c $(COMP)/diagnostics.c $(COMP)/lexer.c $(COMP)/parser.c $(COMP)/instructionHandlers.c $(COMP)/directiveHandlers.c \
-			 $(COMP)/expr.c \
-			 $(STRUCTS)/SymbolTable.c $(STRUCTS)/SectionTable.c $(STRUCTS)/StructTable.c $(STRUCTS)/ast.c
+			 $(COMP)/expr.c\
+			 $(STRUCTS)/SymbolTable.c $(STRUCTS)/SectionTable.c $(STRUCTS)/StructTable.c  $(STRUCTS)/DataTable.c $(STRUCTS)/ast.c
 LIBS = libargparse.a $(COMMON)/libsds.a $(COMMON)/libsecuredstring.a
 TARGET = $(OUT)/arxsm
 

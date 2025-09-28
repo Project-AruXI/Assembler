@@ -16,11 +16,6 @@ Node* initASTNode(astNode_t astNodeType, node_t nodeType, Token* token, Node* pa
 
 	node->parent = parent;
 
-	// node->children = (Node**) malloc(sizeof(Node*) * 3);
-	// if (!node->children) emitError(ERR_MEM, NULL, "Failed to allocate memory for AST node children.");
-	// node->childrenCapacity = 3;
-	// node->childrenCount = 0;
-
  	return node;
 }
 
@@ -33,13 +28,25 @@ void setNodeData(Node* node, void* nodeData, node_t nodeType) {
 			node->nodeData.directive = (DirctvNode*) nodeData;
 			break;
 		case ND_SYMB:
-			node->nodeData.symb = (SymbNode*) nodeData;
+			node->nodeData.symbol = (SymbNode*) nodeData;
 			break;
 		case ND_NUMBER:
 			node->nodeData.number = (NumNode*) nodeData;
 			break;
 		case ND_STRING:
 			node->nodeData.string = (StrNode*) nodeData;
+			break;
+		case ND_OPERATOR:
+			node->nodeData.operator = (OpNode*) nodeData;
+			break;
+		case ND_TYPE:
+			node->nodeData.type = (TypeNode*) nodeData;
+			break;
+		case ND_REGISTER:
+			node->nodeData.reg = (RegNode*) nodeData;
+			break;
+		case ND_UNKNOWN:
+			node->nodeData.generic = nodeData;
 			break;
 		default:
 			emitError(ERR_INTERNAL, NULL, "Invalid node type in setNodeData.");
@@ -56,7 +63,7 @@ void freeAST(Node* root) {
 			deinitDirectiveNode(root->nodeData.directive);
 			break;
 		case ND_SYMB:
-			deinitSymbolNode(root->nodeData.symb);
+			deinitSymbolNode(root->nodeData.symbol);
 			break;
 		case ND_NUMBER:
 			// deinitNumberNode(root->number); --- IGNORE ---
@@ -75,8 +82,55 @@ void freeAST(Node* root) {
 void printAST(Node* root) {
 	if (!root) return;
 
+	char* nodeTypeStr = NULL;
+	switch (root->nodeType) {
+		case ND_INSTRUCTION:
+			nodeTypeStr = "Instruction";
+			break;
+		case ND_REGISTER:
+			nodeTypeStr = "Register";
+			break;
+		case ND_DIRECTIVE:
+			nodeTypeStr = "Directive";
+			break;
+		case ND_SYMB:
+			nodeTypeStr = "Symbol";
+			break;
+		case ND_NUMBER:
+			nodeTypeStr = "Number";
+			break;
+		case ND_STRING:
+			nodeTypeStr = "String";
+			break;
+		case ND_OPERATOR:
+			nodeTypeStr = "Operator";
+			break;
+		case ND_TYPE:
+			nodeTypeStr = "Type";
+			break;
+		default:
+			nodeTypeStr = "Unknown";
+			break;
+	}
+
+	char* astNodeTypeStr = NULL;
+	switch (root->astNodeType) {
+		case AST_LEAF:
+			astNodeTypeStr = "Leaf";
+			break;
+		case AST_INTERNAL:
+			astNodeTypeStr = "Internal";
+			break;
+		case AST_ROOT:
+			astNodeTypeStr = "Root";
+			break;
+		default:
+			astNodeTypeStr = "Unknown";
+			break;
+	}
+
 	// Print the current node
-	rlog("Node(type=%d, astNodeType=%d, token=`%s`)", root->nodeType, root->astNodeType, root->token ? root->token->lexeme : "NULL");
+	rlog("Node(type=%s, astNodeType=%s, token=`%s`)", nodeTypeStr, astNodeTypeStr, root->token ? root->token->lexeme : "NULL");
 
 	// Recursively print children based on node type
 	switch (root->nodeType) {
@@ -88,25 +142,26 @@ void printAST(Node* root) {
 			if (!dirNode) break;
 
 			if (dirNode->unary.data) {
-				rlog("  Unary Directive Data:\n");
+				rlog("  Unary Directive Data:");
 				printAST(dirNode->unary.data);
 			}
 			if (dirNode->binary.symb || dirNode->binary.data) {
-				rlog("  Binary Directive Data:\n");
+				rlog("  Binary Directive Data:");
 				if (dirNode->binary.symb) {
-					rlog("    Symbol:\n");
+					rlog("    Symbol:");
 					printAST(dirNode->binary.symb);
 				}
 				if (dirNode->binary.data) {
-					rlog("    Data:\n");
+					rlog("    Data:");
 					printAST(dirNode->binary.data);
 				}
 			}
 			if (dirNode->nary.exprCount > 0) {
-				rlog("  N-ary Directive Expressions:\n");
+				rlog("  N-ary Directive Expressions:{");
 				for (int i = 0; i < dirNode->nary.exprCount; i++) {
 					printAST(dirNode->nary.exprs[i]);
 				}
+				rlog("}");
 			}
 			break;
 		}
@@ -119,10 +174,43 @@ void printAST(Node* root) {
 		case ND_STRING:
 			// Print string-specific details if needed
 			break;
+		case ND_OPERATOR:
+			// Print operator-specific details if needed
+			break;
 		default:
 			break;
 	}
 }
+
+
+Node** newNodeArray(int initialCapacity) {
+	Node** array = (Node**) malloc(sizeof(Node*) * initialCapacity);
+	if (!array) return NULL;
+
+	return array;
+}
+
+void freeNodeArray(Node** array) {
+	free(array);
+}
+
+Node** nodeArrayInsert(Node** array, int* capacity, int* count, Node* node) {
+	int cap = *capacity;
+	int cnt = *count;
+
+	if (cnt == cap) {
+		cap += 2;
+		Node** temp = (Node**) realloc(array, sizeof(Node*) * cap);
+		if (!temp) return NULL;
+		array = temp;
+		*capacity = cap;
+	}
+	array[cnt] = node;
+	*count = cnt + 1;
+
+	return array;
+}
+
 
 InstrNode* initInstructionNode() {
 	return NULL;
@@ -130,6 +218,7 @@ InstrNode* initInstructionNode() {
 
 void deinitInstructionNode(InstrNode* instrNode) {
 }
+
 
 DirctvNode* initDirectiveNode() {
 	DirctvNode* node = (DirctvNode*) malloc(sizeof(DirctvNode));
@@ -142,7 +231,7 @@ DirctvNode* initDirectiveNode() {
 
 	// Initialize the array in case the directive is n-ary
 	// `addNaryDirectiveData` depends that exprs is initialized
-	node->nary.exprs = (Node**) malloc(sizeof(Node*) * 2);
+	node->nary.exprs = newNodeArray(2);
 	if (!node->nary.exprs) emitError(ERR_MEM, NULL, "Failed to allocate memory for n-ary directive expressions.");
 	node->nary.exprCapacity = 2;
 	node->nary.exprCount = 0;
@@ -174,21 +263,24 @@ void setBinaryDirectiveData(DirctvNode* dirctvNode, Node* symb, Node* data) {
 }
 
 void addNaryDirectiveData(DirctvNode* dirctvNode, Node* expr) {
-	if (dirctvNode->nary.exprCount == dirctvNode->nary.exprCapacity) {
-		dirctvNode->nary.exprCapacity += 2;
-		Node** temp = (Node**) realloc(dirctvNode->nary.exprs, sizeof(Node*) * dirctvNode->nary.exprCapacity);
-		if (!temp) emitError(ERR_MEM, NULL, "Failed to reallocate memory for n-ary directive expressions.");
-		dirctvNode->nary.exprs = temp;
-	}
-	dirctvNode->nary.exprs[dirctvNode->nary.exprCount++] = expr;
+	dirctvNode->nary.exprs = nodeArrayInsert(dirctvNode->nary.exprs, &dirctvNode->nary.exprCapacity, &dirctvNode->nary.exprCount, expr);
+	if (!dirctvNode->nary.exprs) emitError(ERR_MEM, NULL, "Failed to reallocate memory for n-ary directive expressions.");
 }
 
-SymbNode* initSymbolNode() {
-	return NULL;
+
+SymbNode* initSymbolNode(int symbTableIndex, uint32_t value) {
+	SymbNode* symbNode = (SymbNode*) malloc(sizeof(SymbNode));
+	if (!symbNode) emitError(ERR_MEM, NULL, "Failed to allocate memory for symbol node.");
+
+	symbNode->symbTableIndex = symbTableIndex;
+	symbNode->value = value;
+
+	return symbNode;
 }
 
 void deinitSymbolNode(SymbNode* symbNode) {
 }
+
 
 NumNode* initNumberNode() {
 	return NULL;
@@ -197,9 +289,34 @@ NumNode* initNumberNode() {
 void deinitNumberNode(NumNode* numNode) {
 }
 
-StrNode* initStringNode() {
-	return NULL;
+
+StrNode* initStringNode(sds value, int length) {
+	StrNode* strNode = (StrNode*) malloc(sizeof(StrNode));
+	if (!strNode) emitError(ERR_MEM, NULL, "Failed to allocate memory for string node.");
+
+	// Since value is the lexeme itself, the surrounding quotes need to be stripped
+	sds strValue = sdsnewlen(value + 1, length - 2); // +1 and -2 to skip the quotes
+	if (!strValue) emitError(ERR_MEM, NULL, "Failed to allocate memory for string value.");
+	strNode->value = strValue;
+	strNode->length = length - 2;
+
+	return strNode;
 }
 
 void deinitStringNode(StrNode* strNode) {
+}
+
+
+OpNode* initOperatorNode() {
+	return NULL;
+}
+
+void deinitOperatorNode(OpNode* opNode) {
+}
+
+TypeNode* initTypeNode() {
+	return NULL;
+}
+
+void deinitTypeNode(TypeNode* typeNode) {
 }

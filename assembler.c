@@ -113,6 +113,7 @@ int main(int argc, char const* argv[]) {
 	SymbolTable* symbolTable = initSymbolTable();
 	SectionTable* sectionTable = initSectionTable();
 	StructTable* structTable = initStructTable();
+	DataTable* dataTable = initDataTable();
 
 	ParserConfig pconfig = {
 		.warningAsFatal = config.warningAsFatal,
@@ -120,7 +121,7 @@ int main(int argc, char const* argv[]) {
 		.enhancedFeatures = config.enhancedFeatures
 	};
 	Parser* parser = initParser(lexer->tokens, lexer->tokenCount, pconfig);
-	setTables(parser, sectionTable, symbolTable, structTable);
+	setTables(parser, sectionTable, symbolTable, structTable, dataTable);
 
 
 	parse(parser);
@@ -136,6 +137,7 @@ int main(int argc, char const* argv[]) {
 	displaySymbolTable(symbolTable);
 	displaySectionTable(sectionTable);
 	displayStructTable(structTable);
+	displayDataTable(dataTable);
 
 
 

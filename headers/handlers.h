@@ -3,6 +3,7 @@
 
 #include "parser.h"
 
+
 // Directive handlers
 
 /**
@@ -35,6 +36,30 @@ void handleEvt(Parser* parser);
  * @param parser The parser
  */
 void handleIvt(Parser* parser);
+
+/**
+ * Handles the `.set` directive. The directive sets a symbol to a value.
+ * If the symbol exists but not defined, it will be defined. If it is already defined, an error will be emitted.
+ * Otherwise, the symbol will be created and defined.
+ * @param parser The parser
+ * @param directiveRoot The AST node representing the directive
+ */
+void handleSet(Parser* parser, Node* directiveRoot);
+/**
+ * Handles the `.glob` directive. The directive declares a symbol as global (external).
+ * If the symbol exists but not declared as global, it will be marked as global. If it is already global, nothing will be done.
+ * Otherwise, the symbol will be created and marked as global.
+ * @param parser The parser
+ * @param directiveRoot The AST node representing the directive
+ */
+void handleGlob(Parser* parser, Node* directiveRoot);
+
+/**
+ * 
+ * @param parser The parser
+ * @param directiveRoot The AST node representing the directive
+ */
+void handleString(Parser* parser, Node* directiveRoot);
 /**
  * Handles the `.byte` directive. The directive is used to define byte data in the current section.
  * The expressions for the directive will be parsed into ASTs and added as children to the directive's AST node.

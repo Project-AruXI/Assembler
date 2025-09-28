@@ -3,6 +3,7 @@
 
 #include <strings.h>
 
+
 static char* DIRECTIVES[] = {
 	"data", "const", "bss", "text", "evt", "ivt", "set", "glob", "end",
 	"string", "byte", "hword", "word", "float", "zero", "fill", "align",
@@ -114,7 +115,8 @@ static char* CONDS[] = {
 };
 
 
-int indexOf(char* arr[], int size, const char* key) {
+static inline int indexOf(char* arr[], int size, const char* key);
+static inline int indexOf(char* arr[], int size, const char* key) {
 	for (int i = 0; i < size; i++) {
 		if (strcasecmp(arr[i], key) == 0) return i;
 	}

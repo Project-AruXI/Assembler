@@ -6,6 +6,7 @@
 #include "SymbolTable.h"
 #include "SectionTable.h"
 #include "StructTable.h"
+#include "DataTable.h"
 
 
 typedef struct ParserConfiguration {
@@ -30,12 +31,13 @@ typedef struct Parser {
 	SectionTable* sectionTable;
 	SymbolTable* symbolTable;
 	StructTable* structTable;
+	DataTable* dataTable;
 } Parser;
 
 
 Parser* initParser(Token** tokens, int tokenCount, ParserConfig config);
 void deinitParser(Parser* parser);
-void setTables(Parser* parser, SectionTable* sectionTable, SymbolTable* symbolTable, StructTable* structTable);
+void setTables(Parser* parser, SectionTable* sectionTable, SymbolTable* symbolTable, StructTable* structTable, DataTable* dataTable);
 
 void parse(Parser* parser);
 

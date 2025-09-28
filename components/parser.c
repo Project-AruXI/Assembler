@@ -26,10 +26,11 @@ Parser* initParser(Token** tokens, int tokenCount, ParserConfig config) {
 	return parser;
 }
 
-void setTables(Parser* parser, SectionTable* sectionTable, SymbolTable* symbolTable, StructTable* structTable) {
+void setTables(Parser* parser, SectionTable* sectionTable, SymbolTable* symbolTable, StructTable* structTable, DataTable* dataTable) {
 	parser->sectionTable = sectionTable;
 	parser->symbolTable = symbolTable;
 	parser->structTable = structTable;
+	parser->dataTable = dataTable;
 }
 
 void deinitParser(Parser* parser) {
@@ -148,12 +149,16 @@ static void parseDirective(Parser* parser) {
 		case TEXT: handleText(parser); break;
 		case EVT: handleEvt(parser); break;
 		case IVT: handleIvt(parser); break;
-		case SET:
-		case GLOB:
-		case END:
-		case STRING:
+	
+		case SET: handleSet(parser, directiveRoot); break;
+		case GLOB: handleGlob(parser, directiveRoot); break;
+		case END: // Find a way to stop parsing
+			parser->currentTokenIndex++;
+			emitWarning(WARN_UNIMPLEMENTED, &linedata, "Directive `%s` not yet implemented!", directiveToken->lexeme);
+			break;
+		case STRING: handleString(parser, directiveRoot); break;
 		case BYTE: handleByte(parser, directiveRoot); break;
-		case HWORD:
+		case HWORD: 
 		case WORD:
 		case FLOAT:
 		case ZERO:
@@ -166,7 +171,6 @@ static void parseDirective(Parser* parser) {
 		case DEF:
 		case INCLUDE:
 		case TYPEINFO:
-		case OFFSET:
 			parser->currentTokenIndex++;
 			emitWarning(WARN_UNIMPLEMENTED, &linedata, "Directive `%s` not yet implemented!", directiveToken->lexeme);
 			break;
