@@ -161,13 +161,18 @@ void handleSet(Parser* parser, Node* directiveRoot) {
 	// Note that this means an entry can exist but it is only in the case that it has been referenced before
 	// If it has been referenced, just updated the defined status
 
-	symb_entry_t* existingEntry = getSymbolEntry(parser->symbolTable, nextToken->lexeme);
-	if (existingEntry && GET_DEFINED(existingEntry->flags)) {
-		emitError(ERR_REDEFINED, &linedata, "Symbol redefinition: `%s`. First defined at `%s`", nextToken->lexeme, ssGetString(existingEntry->source));
+	symb_entry_t* symbEntry = getSymbolEntry(parser->symbolTable, nextToken->lexeme);
+	if (symbEntry && GET_DEFINED(symbEntry->flags)) {
+		emitError(ERR_REDEFINED, &linedata, "Symbol redefinition: `%s`. First defined at `%s`", nextToken->lexeme, ssGetString(symbEntry->source));
 	}
 
-	// Onwards to the expression
 	parser->currentTokenIndex++; // Consume the symbol token
+	// Make sure comma is next
+	nextToken = parser->tokens[parser->currentTokenIndex];
+	if (nextToken->type != TK_COMMA) emitError(ERR_INVALID_SYNTAX, &linedata, "The `.set` directive must have a comma after the symbol.");
+	parser->currentTokenIndex++; // Consume the comma
+
+	// Onwards to the expression
 	Node* exprRoot = parseExpression(parser);
 
 	// Assume currentTokenIndex was updated in parseExpression for now
@@ -177,18 +182,17 @@ void handleSet(Parser* parser, Node* directiveRoot) {
 
 	int symbTableIndex = -1;
 	// Finish dealing with the symbol table
-	if (existingEntry) {
+	if (symbEntry) {
 		// Update the existing entry to be defined now
-		SET_DEFINED(existingEntry->flags);
-		existingEntry->value.expr = exprRoot;
+		SET_DEFINED(symbEntry->flags);
+		symbEntry->value.expr = exprRoot;
 	} else {
 		SYMBFLAGS flags = CREATE_FLAGS(M_ABS, T_NONE, E_EXPR, parser->sectionTable->activeSection, L_LOC, R_NREF, D_DEF);
-		symb_entry_t* symbEntry = initSymbolEntry(symbToken->lexeme, flags, exprRoot, 0, symbToken->sstring, symbToken->linenum);
+		symbEntry = initSymbolEntry(symbToken->lexeme, flags, exprRoot, 0, symbToken->sstring, symbToken->linenum);
 		
 		addSymbolEntry(parser->symbolTable, symbEntry);
 		symbTableIndex = parser->symbolTable->size - 1;
 	}
-	addSymbolReference(existingEntry, symbToken->sstring, symbToken->linenum);
 
 	Node* symbNode = initASTNode(AST_LEAF, ND_SYMB, symbToken, directiveRoot);
 	SymbNode* symbData = initSymbolNode(symbTableIndex, 0);
@@ -225,18 +229,18 @@ void handleGlob(Parser* parser, Node* directiveRoot) {
 	// Otherwise, create a new entry
 
 	int symbTableIndex = -1;
-	symb_entry_t* existingEntry = getSymbolEntry(parser->symbolTable, nextToken->lexeme);
-	if (existingEntry) SET_LOCALITY(existingEntry->flags);
+	symb_entry_t* symbEntry = getSymbolEntry(parser->symbolTable, nextToken->lexeme);
+	if (symbEntry) SET_LOCALITY(symbEntry->flags);
 	else {
 		// Since .glob only sets the locality status, and this is its first sighting, not much is known
 		// Just go with defaults/assumptions that it is absolute, no type, and value
 		// The assumption is that most commonly, addresses are made global
 		SYMBFLAGS flags = CREATE_FLAGS(M_ABS, T_NONE, E_VAL, parser->sectionTable->activeSection, L_GLOB, R_REF, D_UNDEF);
-		symb_entry_t* symbEntry = initSymbolEntry(symbToken->lexeme, flags, NULL, 0, symbToken->sstring, symbToken->linenum);
+		symbEntry = initSymbolEntry(symbToken->lexeme, flags, NULL, 0, symbToken->sstring, symbToken->linenum);
 		addSymbolEntry(parser->symbolTable, symbEntry);
 		symbTableIndex = parser->symbolTable->size - 1;
 	}
-	addSymbolReference(existingEntry, symbToken->sstring, symbToken->linenum);
+	addSymbolReference(symbEntry, symbToken->sstring, symbToken->linenum);
 
 	// Make sure there is nothing else afterwards except for newline
 	parser->currentTokenIndex++; // Consume the symbol token
@@ -372,4 +376,152 @@ void handleByte(Parser* parser, Node* directiveRoot) {
 	data_entry_t* bytesDataEntry = initDataEntry(BYTES_TYPE, dataAddr, dataSize, byteArray, byteArrayCount, byteArrayCapacity);
 	parser->sectionTable->entries[parser->sectionTable->activeSection].lp += byteArrayCount;
 	addDataEntry(parser->dataTable, bytesDataEntry, parser->sectionTable->activeSection);
+}
+
+void handleHword(Parser* parser, Node* directiveRoot) {
+	// Exact same thing as `handleByte` but with each expression being 2 bytes
+	initScope("handleHword");
+
+	Token* directiveToken = parser->tokens[parser->currentTokenIndex++];
+	linedata_ctx linedata = {
+		.linenum = directiveToken->linenum,
+		.source = ssGetString(directiveToken->sstring)
+	};
+
+	directiveToken->type = TK_D_HWORD;
+
+	DirctvNode* directiveData = initDirectiveNode();
+	setNodeData(directiveRoot, directiveData, ND_DIRECTIVE);
+
+	log("Handling .hword directive at line %d", directiveToken->linenum);
+
+	Token* nextToken = parser->tokens[parser->currentTokenIndex];
+	if (nextToken->type == TK_NEWLINE) emitError(ERR_INVALID_SYNTAX, &linedata, "The `.hword` directive must be followed by at least one expression.");
+
+	Node** hwordArray = newNodeArray(2);
+	if (!hwordArray) emitError(ERR_MEM, NULL, "Failed to allocate memory for `.hword` directive expressions.");
+	int hwordArrayCapacity = 2;
+	int hwordArrayCount = 0;
+
+	while (true) {
+		Node* exprRoot = parseExpression(parser);
+		addNaryDirectiveData(directiveData, exprRoot);
+		exprRoot->parent = directiveRoot;
+
+		hwordArray = nodeArrayInsert(hwordArray, &hwordArrayCapacity, &hwordArrayCount, exprRoot);
+		if (!hwordArray) emitError(ERR_MEM, NULL, "Failed to reallocate memory for `.hword` directive expressions.");
+
+		nextToken = parser->tokens[parser->currentTokenIndex];
+		if (nextToken->type == TK_NEWLINE) {
+			parser->currentTokenIndex++;
+			break;
+		} else if (nextToken->type == TK_COMMA) {
+			parser->currentTokenIndex++;
+			nextToken = parser->tokens[parser->currentTokenIndex];
+			if (nextToken->type == TK_NEWLINE) emitError(ERR_INVALID_SYNTAX, &linedata, "Trailing comma in `.hword` directive is not allowed.");
+			continue;
+		} else {
+			emitError(ERR_INVALID_SYNTAX, &linedata, "Expected `,` or newline after expression in `.hword` directive, got `%s`.", nextToken->lexeme);
+		}
+	}
+
+	uint32_t dataAddr = parser->sectionTable->entries[parser->sectionTable->activeSection].lp;
+	uint32_t dataSize = hwordArrayCount * 2; // Each expr is 2 bytes
+	data_entry_t* hwordsDataEntry = initDataEntry(HWORDS_TYPE, dataAddr, dataSize, hwordArray, hwordArrayCount, hwordArrayCapacity);
+	parser->sectionTable->entries[parser->sectionTable->activeSection].lp += dataSize;
+	addDataEntry(parser->dataTable, hwordsDataEntry, parser->sectionTable->activeSection);
+}
+
+void handleWord(Parser* parser, Node* directiveRoot) {
+	// Exact same thing as `handleByte` but with each expression being 4 bytes
+	initScope("handleWord");
+
+	Token* directiveToken = parser->tokens[parser->currentTokenIndex++];
+	linedata_ctx linedata = {
+		.linenum = directiveToken->linenum,
+		.source = ssGetString(directiveToken->sstring)
+	};
+
+	directiveToken->type = TK_D_WORD;
+
+	DirctvNode* directiveData = initDirectiveNode();
+	setNodeData(directiveRoot, directiveData, ND_DIRECTIVE);
+
+	log("Handling .word directive at line %d", directiveToken->linenum);
+
+	Token* nextToken = parser->tokens[parser->currentTokenIndex];
+	if (nextToken->type == TK_NEWLINE) emitError(ERR_INVALID_SYNTAX, &linedata, "The `.word` directive must be followed by at least one expression.");
+
+	Node** wordArray = newNodeArray(2);
+	if (!wordArray) emitError(ERR_MEM, NULL, "Failed to allocate memory for `.word` directive expressions.");
+	int wordArrayCapacity = 2;
+	int wordArrayCount = 0;
+
+	while (true) {
+		Node* exprRoot = parseExpression(parser);
+		addNaryDirectiveData(directiveData, exprRoot);
+		exprRoot->parent = directiveRoot;
+
+		wordArray = nodeArrayInsert(wordArray, &wordArrayCapacity, &wordArrayCount, exprRoot);
+		if (!wordArray) emitError(ERR_MEM, NULL, "Failed to reallocate memory for `.word` directive expressions.");
+
+		nextToken = parser->tokens[parser->currentTokenIndex];
+		if (nextToken->type == TK_NEWLINE) {
+			parser->currentTokenIndex++;
+			break;
+		} else if (nextToken->type == TK_COMMA) {
+			parser->currentTokenIndex++;
+			nextToken = parser->tokens[parser->currentTokenIndex];
+			if (nextToken->type == TK_NEWLINE) emitError(ERR_INVALID_SYNTAX, &linedata, "Trailing comma in `.word` directive is not allowed.");
+			continue;
+		} else {
+			emitError(ERR_INVALID_SYNTAX, &linedata, "Expected `,` or newline after expression in `.word` directive, got `%s`.", nextToken->lexeme);
+		}
+	}
+
+	uint32_t dataAddr = parser->sectionTable->entries[parser->sectionTable->activeSection].lp;
+	uint32_t dataSize = wordArrayCount * 4; // Each expr is 4 bytes
+	data_entry_t* wordsDataEntry = initDataEntry(WORDS_TYPE, dataAddr, dataSize, wordArray, wordArrayCount, wordArrayCapacity);
+	parser->sectionTable->entries[parser->sectionTable->activeSection].lp += dataSize;
+	addDataEntry(parser->dataTable, wordsDataEntry, parser->sectionTable->activeSection);
+}
+
+void handleFloat(Parser *parser, Node *directiveRoot)
+{
+}
+
+void handleZero(Parser *parser, Node *directiveRoot)
+{
+}
+
+void handleFill(Parser *parser, Node *directiveRoot)
+{
+}
+
+void handleSize(Parser *parser, Node *directiveRoot)
+{
+}
+
+void handleType(Parser *parser, Node *directiveRoot)
+{
+}
+
+void handleAlign(Parser *parser, Node *directiveRoot)
+{
+}
+
+void handleExtern(Parser *parser, Node *directiveRoot)
+{
+}
+
+void handleInclude(Parser *parser, Node *directiveRoot)
+{
+}
+
+void handleDef(Parser *parser, Node *directiveRoot)
+{
+}
+
+void handleSizeof(Parser *parser, Node *directiveRoot)
+{
 }

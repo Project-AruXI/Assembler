@@ -67,5 +67,19 @@ void handleString(Parser* parser, Node* directiveRoot);
  * @param directiveRoot The AST node representing the directive
  */
 void handleByte(Parser* parser, Node* directiveRoot);
+void handleHword(Parser* parser, Node* directiveRoot);
+void handleWord(Parser* parser, Node* directiveRoot);
+void handleFloat(Parser* parser, Node* directiveRoot);
+void handleZero(Parser* parser, Node* directiveRoot);
+void handleFill(Parser* parser, Node* directiveRoot);
+
+void handleSize(Parser* parser, Node* directiveRoot);
+void handleType(Parser* parser, Node* directiveRoot);
+
+void handleAlign(Parser* parser, Node* directiveRoot);
+void handleExtern(Parser* parser, Node* directiveRoot);
+void handleInclude(Parser* parser, Node* directiveRoot);
+void handleDef(Parser* parser, Node* directiveRoot);
+void handleSizeof(Parser* parser, Node* directiveRoot);
 
 #endif

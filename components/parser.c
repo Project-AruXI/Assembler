@@ -158,8 +158,8 @@ static void parseDirective(Parser* parser) {
 			break;
 		case STRING: handleString(parser, directiveRoot); break;
 		case BYTE: handleByte(parser, directiveRoot); break;
-		case HWORD: 
-		case WORD:
+		case HWORD: handleHword(parser, directiveRoot); break;
+		case WORD: handleWord(parser, directiveRoot); break;
 		case FLOAT:
 		case ZERO:
 		case FILL:
