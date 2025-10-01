@@ -13,4 +13,6 @@
  */
 Node* parseExpression(Parser* parser);
 
+int evaluateExpression(Node* exprRoot, SymbolTable* symbTable);
+
 #endif

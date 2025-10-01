@@ -85,7 +85,7 @@ static Node* parseUnary(Parser* parser) {
 		case TK_LP: // @
 			parser->currentTokenIndex++;
 			// Create a node for the unary operator
-			Node* opNode = initASTNode(AST_INTERNAL, ND_UNKNOWN, token, NULL);
+			Node* opNode = initASTNode(AST_INTERNAL, ND_OPERATOR, token, NULL);
 			Node* operand = parseUnary(parser);
 			// Attach operand as child (store in nodeData.generic for now)
 			setNodeData(opNode, operand, ND_UNKNOWN);
@@ -107,7 +107,7 @@ static Node* parseBinary(Parser* parser, int minPrec) {
 		int nextMinPrec = prec + (isRightAssociative(opType) ? 0 : 1);
 		Node* right = parseBinary(parser, nextMinPrec);
 		// Create operator node
-		Node* opNode = initASTNode(AST_INTERNAL, ND_UNKNOWN, token, NULL);
+		Node* opNode = initASTNode(AST_INTERNAL, ND_OPERATOR, token, NULL);
 		// Attach left and right as children (store as generic for now)
 		Node** children = malloc(sizeof(Node*) * 2);
 		children[0] = left;
@@ -120,4 +120,8 @@ static Node* parseBinary(Parser* parser, int minPrec) {
 
 Node* parseExpression(Parser* parser) {
 	return parseBinary(parser, 1);
+}
+
+int evaluateExpression(Node* exprRoot, SymbolTable* symbTable) {
+	return 0;
 }

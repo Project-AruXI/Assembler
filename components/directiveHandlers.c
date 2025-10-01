@@ -256,6 +256,46 @@ void handleGlob(Parser* parser, Node* directiveRoot) {
 	setUnaryDirectiveData(directiveData, symbNode);
 }
 
+static void validateSection(Parser* parser, Token* directive, linedata_ctx* linedata) {
+	// .set, .glob, .end, .align, .size, .extern, .type, .include, .def, .sizeof, and .typeinfo
+	//  are allowed anywhere
+	// .string, .byte, .hword, .word, .float, .zero, .fill are allowed in data and const minimum
+	// .byte, .hword, .word, and .zero are allowed in evt and ivt
+	// .zero is allowed in bss
+
+	int directiveType = directive->type;
+	int activeSection = parser->sectionTable->activeSection;
+	char* sectionStr = NULL;
+	switch (activeSection) {
+		case DATA_SECT_N: sectionStr = ".data"; break;
+		case CONST_SECT_N: sectionStr = ".const"; break;
+		case BSS_SECT_N: sectionStr = ".bss"; break;
+		case TEXT_SECT_N: sectionStr = ".text"; break;
+		case EVT_SECT_N: sectionStr = ".evt"; break;
+		case IVT_SECT_N: sectionStr = ".ivt"; break;
+		default: sectionStr = "unknown"; break;
+	}
+
+	if (directiveType == TK_D_STRING || directiveType == TK_D_FLOAT) {
+		if (activeSection != DATA_SECT_N && activeSection != CONST_SECT_N) {
+			emitError(ERR_DIRECTIVE_NOT_ALLOWED, linedata, "The `%s` directive is not allowed in the %s section.", ssGetString(directive->sstring), sectionStr);
+		}
+	} else if (directiveType == TK_D_BYTE || directiveType == TK_D_HWORD || directiveType == TK_D_WORD) {
+		if (activeSection != DATA_SECT_N && activeSection != CONST_SECT_N &&
+				activeSection != EVT_SECT_N && activeSection != IVT_SECT_N) {
+			emitError(ERR_DIRECTIVE_NOT_ALLOWED, linedata, "The `%s` directive is not allowed in the %s section.", ssGetString(directive->sstring), sectionStr);
+		}
+	} else if (directiveType == TK_D_ZERO) {
+		if (activeSection != DATA_SECT_N && activeSection != CONST_SECT_N &&
+				activeSection != BSS_SECT_N &&
+				activeSection != EVT_SECT_N && activeSection != IVT_SECT_N) {
+			emitError(ERR_DIRECTIVE_NOT_ALLOWED, linedata, "The `%s` directive is not allowed in the %s section.", ssGetString(directive->sstring), sectionStr);
+		}
+		if (activeSection != BSS_SECT_N) {
+			emitWarning(WARN_UNEXPECTED, linedata, "Consider using the `.zero` directive in the `.bss` section instead of `%s`.", sectionStr);
+		}
+	}
+}
 
 void handleString(Parser* parser, Node* directiveRoot) {
 	initScope("handleString");
@@ -267,6 +307,8 @@ void handleString(Parser* parser, Node* directiveRoot) {
 	};
 
 	directiveToken->type = TK_D_STRING;
+
+	validateSection(parser, directiveToken, &linedata);
 
 	DirctvNode* directiveData = initDirectiveNode();
 	setNodeData(directiveRoot, directiveData, ND_DIRECTIVE);
@@ -320,6 +362,8 @@ void handleByte(Parser* parser, Node* directiveRoot) {
 	};
 
 	directiveToken->type = TK_D_BYTE;
+
+	validateSection(parser, directiveToken, &linedata);
 
 	DirctvNode* directiveData = initDirectiveNode();
 	setNodeData(directiveRoot, directiveData, ND_DIRECTIVE);
@@ -392,6 +436,8 @@ void handleHword(Parser* parser, Node* directiveRoot) {
 
 	directiveToken->type = TK_D_HWORD;
 
+	validateSection(parser, directiveToken, &linedata);
+
 	DirctvNode* directiveData = initDirectiveNode();
 	setNodeData(directiveRoot, directiveData, ND_DIRECTIVE);
 
@@ -446,6 +492,8 @@ void handleWord(Parser* parser, Node* directiveRoot) {
 
 	directiveToken->type = TK_D_WORD;
 
+	validateSection(parser, directiveToken, &linedata);
+
 	DirctvNode* directiveData = initDirectiveNode();
 	setNodeData(directiveRoot, directiveData, ND_DIRECTIVE);
 
@@ -499,6 +547,8 @@ void handleFloat(Parser* parser, Node* directiveRoot) {
 
 	directiveToken->type = TK_D_FLOAT;
 
+	validateSection(parser, directiveToken, &linedata);
+
 	DirctvNode* directiveData = initDirectiveNode();
 	setNodeData(directiveRoot, directiveData, ND_DIRECTIVE);
 
@@ -549,8 +599,55 @@ void handleFloat(Parser* parser, Node* directiveRoot) {
 	addDataEntry(parser->dataTable, floatsDataEntry, parser->sectionTable->activeSection);
 }
 
-void handleZero(Parser *parser, Node *directiveRoot)
-{
+void handleZero(Parser* parser, Node* directiveRoot) {
+	initScope("handleZero");
+
+	Token* directiveToken = parser->tokens[parser->currentTokenIndex++];
+	linedata_ctx linedata = {
+		.linenum = directiveToken->linenum,
+		.source = ssGetString(directiveToken->sstring)
+	};
+
+	directiveToken->type = TK_D_ZERO;
+
+	validateSection(parser, directiveToken, &linedata);
+
+	DirctvNode* directiveData = initDirectiveNode();
+	setNodeData(directiveRoot, directiveData, ND_DIRECTIVE);
+
+	log("Handling .zero directive at line %d", directiveToken->linenum);
+
+	// The directive is in the form of `.zero size`
+	// size is allowed to be an expression
+	// The expression will be in the form of its AST, with the directive holding this AST
+	//     .zero
+	//       |
+	//      expr
+	//       |
+	//     ... ...
+
+	Token* nextToken = parser->tokens[parser->currentTokenIndex];
+	if (nextToken->type == TK_NEWLINE) emitError(ERR_INVALID_SYNTAX, &linedata, "The `.zero` directive must be followed by an expression.");
+
+	Node* exprRoot = parseExpression(parser);
+	// setUnaryDirectiveData(directiveData, exprRoot);
+	addNaryDirectiveData(directiveData, exprRoot);
+	exprRoot->parent = directiveRoot;
+
+	nextToken = parser->tokens[parser->currentTokenIndex]; // This better be the newline
+	if (nextToken->type != TK_NEWLINE) emitError(ERR_INVALID_SYNTAX, &linedata, "The `.zero` directive must be followed by only an expression on the same line.");
+	parser->currentTokenIndex++; // Consume the newline
+
+	uint32_t dataAddr = parser->sectionTable->entries[parser->sectionTable->activeSection].lp;
+	// The size of the zeroed data is determined by evaluating the expression
+	int exprEvalResult = evaluateExpression(exprRoot, parser->symbolTable);
+	if (exprEvalResult < 0) emitError(ERR_INVALID_EXPRESSION, &linedata, "Failed to evaluate expression in `.zero` directive.");
+	uint32_t dataSize = (uint32_t)exprEvalResult;
+	parser->sectionTable->entries[parser->sectionTable->activeSection].lp += dataSize;
+
+	// Set the data for the data table
+	data_entry_t* zeroDataEntry = initDataEntry(BYTES_TYPE, dataAddr, dataSize, directiveData->nary.exprs, 1, directiveData->nary.exprCapacity);
+	addDataEntry(parser->dataTable, zeroDataEntry, parser->sectionTable->activeSection);
 }
 
 void handleFill(Parser *parser, Node *directiveRoot)
@@ -558,8 +655,7 @@ void handleFill(Parser *parser, Node *directiveRoot)
 }
 
 
-void handleSize(Parser *parser, Node *directiveRoot)
-{
+void handleSize(Parser* parser, Node* directiveRoot) {
 }
 
 void handleType(Parser* parser, Node* directiveRoot) {

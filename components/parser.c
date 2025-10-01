@@ -162,7 +162,7 @@ static void parseDirective(Parser* parser) {
 		case HWORD: handleHword(parser, directiveRoot); break;
 		case WORD: handleWord(parser, directiveRoot); break;
 		case FLOAT: handleFloat(parser, directiveRoot); break;
-		case ZERO:
+		case ZERO: handleZero(parser, directiveRoot); break;
 		case FILL:
 
 		case ALIGN:
@@ -209,6 +209,7 @@ void parse(Parser* parser) {
 				parseDirective(parser);
 				break;
 			case TK_MACRO:
+			case TK_OUT:
 			case TK_REGISTER:
 			case TK_IMM:
 			case TK_COMMA:
@@ -236,7 +237,6 @@ void parse(Parser* parser) {
 			case TK_INTEGER:
 			case TK_FLOAT:
 			case TK_CHAR:
-			case TK_OUT:
 			case TK_IF:
 			case TK_MAIN_TYPE:
 			case TK_SUB_TYPE:
@@ -260,5 +260,10 @@ void parse(Parser* parser) {
 		}
 		currentTokenIndex = parser->currentTokenIndex;
 	}
+
+}
+
+void showParserConfig(Parser* parser) {
+	log("Parser Configuration");
 
 }

@@ -34,6 +34,7 @@ typedef enum {
 
 typedef enum {
 	WARN_UNREACHABLE,
+	WARN_UNEXPECTED,
 	WARN_UNIMPLEMENTED
 } warnType;
 
