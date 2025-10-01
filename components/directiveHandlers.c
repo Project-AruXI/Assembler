@@ -571,6 +571,9 @@ void handleType(Parser* parser, Node* directiveRoot) {
 		.source = ssGetString(directiveToken->sstring)
 	};
 
+	// Disallow when types feature is disabled
+	if (!FEATURE_ENABLED(parser->config, FEATURE_TYPES)) emitError(ERR_UNSUPPORTED, &linedata, "The `.type` directive is not supported because types feature is disabled.");
+
 	directiveToken->type = TK_D_TYPE;
 
 	DirctvNode* directiveData = initDirectiveNode();
@@ -835,6 +838,9 @@ void handleDef(Parser* parser, Node* directiveRoot) {
 		.linenum = directiveToken->linenum,
 		.source = ssGetString(directiveToken->sstring)
 	};
+
+	// Disallow when types feature is disabled
+	if (!FEATURE_ENABLED(parser->config, FEATURE_TYPES)) emitError(ERR_UNSUPPORTED, &linedata, "The `.def` directive is not supported because types feature is disabled.");
 
 	directiveToken->type = TK_D_DEF;
 

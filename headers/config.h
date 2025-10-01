@@ -36,8 +36,14 @@ typedef enum {
 	FEATURE_TYPES = 1 << 1, // Any sort of defining types (.type, .def)
 	FEATURE_MACROS = 1 << 2,
 	FEATURE_PTR_DEREF = 1 << 3, // Pointer dereferencing in expressions
-	FEATURE_FIELD_ACCESS = 1 << 4, // Accessing struct fields in expressions
+	FEATURE_FIELD_ACCESS = 1 << 4, // Accessing struct/array fields in expressions
 	FEATURE_ALL = 0xFF
 } EnhancedFeatures;
+
+
+#define FEATURE_ENABLED(config, feature) ((config).enhancedFeatures & (feature))
+#define WARNING_ENABLED(config, warning) ((config).warnings & (warning))
+
+
 
 #endif

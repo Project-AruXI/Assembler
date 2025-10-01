@@ -30,6 +30,10 @@ char* parseArgs(int argc, char const* argv[]) {
 		OPT_BOOLEAN('W', "no-warn", &config.warnings, "disable warnings", NULL, 0, 0),
 		OPT_BOOLEAN('F', "fatal-warning", &warningAsFatal, "treat warnings as errors", NULL, 0, 0),
 		OPT_BOOLEAN('v', "version", &showVersion, "show version and exit", NULL, 0, 0),
+		OPT_BIT('t', "enable-types", &config.enhancedFeatures, "enable enhanced typing features", NULL, FEATURE_TYPES, 0),
+		OPT_BIT('m', "enable-macros", &config.enhancedFeatures, "enable macros feature", NULL, FEATURE_MACROS, 0),
+		OPT_BIT('p', "enable-ptr-deref", &config.enhancedFeatures, "enable pointer dereferencing in expressions", NULL, FEATURE_PTR_DEREF, 0),
+		OPT_BIT('f', "enable-field-access", &config.enhancedFeatures, "enable struct/array field access in expressions", NULL, FEATURE_FIELD_ACCESS, 0),
 		OPT_HELP(),
 		OPT_END(),
 	};
