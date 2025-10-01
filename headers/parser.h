@@ -28,6 +28,8 @@ typedef struct Parser {
 
 	ParserConfig config;
 
+	bool processing; // In case of a .end directive, stop processing further lines
+
 	SectionTable* sectionTable;
 	SymbolTable* symbolTable;
 	StructTable* structTable;
@@ -40,5 +42,7 @@ void deinitParser(Parser* parser);
 void setTables(Parser* parser, SectionTable* sectionTable, SymbolTable* symbolTable, StructTable* structTable, DataTable* dataTable);
 
 void parse(Parser* parser);
+
+void showParserConfig(Parser* parser);
 
 #endif

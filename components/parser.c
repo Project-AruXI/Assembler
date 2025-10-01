@@ -23,6 +23,8 @@ Parser* initParser(Token** tokens, int tokenCount, ParserConfig config) {
 
 	parser->config = config;
 
+	parser->processing = true;
+
 	return parser;
 }
 
@@ -110,9 +112,42 @@ static void parseLabel(Parser* parser) {
 static void parseIdentifier(Parser* parser) {
 	initScope("parseIdentifier");
 
-	emitWarning(WARN_UNIMPLEMENTED, NULL, "Identifier parsing not yet implemented.");
+	// The only identifies visible at the "top" level aside from labels are instructions
+
+	Token* idToken = parser->tokens[parser->currentTokenIndex];
+
+	Node* instructionRoot = initASTNode(AST_ROOT, ND_INSTRUCTION, idToken, NULL);
+	if (!instructionRoot) emitError(ERR_MEM, NULL, "Failed to create AST node for instruction.");
+
+	linedata_ctx linedata = {
+		.linenum = idToken->linenum,
+		.source = ssGetString(idToken->sstring)
+	};
+
+	// Ensure it is an instruction
+
+	int index = indexOf(INSTRUCTIONS, sizeof(INSTRUCTIONS)/sizeof(INSTRUCTIONS[0]), idToken->lexeme);
+	if (index == -1) emitError(ERR_INVALID_INSTRUCTION, &linedata, "Unknown instruction: `%s`", idToken->lexeme);
+
+	idToken->type = TK_INSTRUCTION;
+
+	enum Instructions instruction = (enum Instructions) index;
+	log("Parsing instruction: `%s`. Set type to `%s`", idToken->lexeme, INSTRUCTIONS[instruction]);
+
+	// Go with same system as the old/legacy assembler
+
+	if (instruction >= IR_TYPE_IDX && instruction < I_TYPE_IDX) handleIR(parser, instructionRoot);
+	else if (instruction >= I_TYPE_IDX && instruction < R_TYPE_IDX) handleI(parser, instructionRoot);
+	else if (instruction >= R_TYPE_IDX && instruction < M_TYPE_IDX) handleR(parser, instructionRoot);
+	else if (instruction >= M_TYPE_IDX && instruction < Bi_TYPE_IDX) handleM(parser, instructionRoot);
+	else if (instruction >= Bi_TYPE_IDX && instruction < Bu_TYPE_IDX) handleBi(parser, instructionRoot);
+	else if (instruction >= Bu_TYPE_IDX && instruction < Bc_TYPE_IDX) handleBu(parser, instructionRoot);
+	else if (instruction >= Bc_TYPE_IDX && instruction < S_TYPE_IDX) handleBc(parser, instructionRoot);
+	else if (instruction >= S_TYPE_IDX && instruction < F_TYPE_IDX) handleS(parser, instructionRoot);
+	else if (instruction >= F_TYPE_IDX) handleF(parser, instructionRoot);
+	else emitError(ERR_INTERNAL, &linedata, "Instruction `%s` could not be categorized into a type.", idToken->lexeme);
+
 	parser->currentTokenIndex++;
-	return;
 }
 
 static void parseDirective(Parser* parser) {
@@ -152,11 +187,11 @@ static void parseDirective(Parser* parser) {
 	
 		case SET: handleSet(parser, directiveRoot); break;
 		case GLOB: handleGlob(parser, directiveRoot); break;
-		case END: // Find a way to stop parsing
+		case END:
 			parser->currentTokenIndex++;
-			emitWarning(WARN_UNIMPLEMENTED, &linedata, "Directive `%s` not yet implemented!", directiveToken->lexeme);
+			emitWarning(WARN_UNEXPECTED, &linedata, "The `.end` directive has been encountered. Further lines will be ignored.");
+			parser->processing = false;
 			break;
-
 		case STRING: handleString(parser, directiveRoot); break;
 		case BYTE: handleByte(parser, directiveRoot); break;
 		case HWORD: handleHword(parser, directiveRoot); break;
@@ -259,6 +294,11 @@ void parse(Parser* parser) {
 			default: emitError(ERR_INTERNAL, NULL, "Parser encountered unhandled token type: %s", token->lexeme);
 		}
 		currentTokenIndex = parser->currentTokenIndex;
+
+		if (parser->processing == false) {
+			emitWarning(WARN_UNEXPECTED, NULL, "Parser has encountered a .end directive. Further lines will be ignored.");
+			break;
+		}
 	}
 
 }
