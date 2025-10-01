@@ -668,7 +668,7 @@ void handleType(Parser* parser, Node* directiveRoot) {
 	// T_PTR is 2 while TYPE_PTR is 2
 	// T_STRUCT is 3 while TYPE_STRUCT is 3
 	// T_UNION is 4 while TYPE_UNION is 4
-	symbEntry->flags = SET_SUB_TYPE(symbEntry->flags, (subTypeData->subType + 1));
+	symbEntry->flags = SET_SUB_TYPE(symbEntry->flags, (subTypeData->subType - 1));
 
 	parser->currentTokenIndex++; // Consume the sub-type token
 
@@ -683,7 +683,7 @@ void handleType(Parser* parser, Node* directiveRoot) {
 	if (nextToken->type != TK_DOT) emitError(ERR_INVALID_SYNTAX, &linedata, "Expected newline or `.` after sub type in `.type` directive, got `%s`.", nextToken->lexeme);
 	parser->currentTokenIndex++;
 
-	nextToken = parser->tokens[parser->currentTokenIndex];
+	nextToken = parser->tokens[parser->currentTokenIndex++];
 	if (nextToken->type != TK_IDENTIFIER) emitError(ERR_INVALID_SYNTAX, &linedata, "The `.type` directive must be followed by a tag after the dot, got `%s`.", nextToken->lexeme);
 
 
@@ -711,6 +711,8 @@ void handleType(Parser* parser, Node* directiveRoot) {
 
 	// Update the symbol's struct type index
 	symbEntry->structTypeIdx = structRoot->index;
+	// Since the struct is know, it can inherit the size
+	symbEntry->size = structRoot->size;
 }
 
 
@@ -735,7 +737,7 @@ void handleInclude(Parser* parser) {
 
 	// The directive is in the form of `.include "filename"`
 
-	Token* nextToken = parser->tokens[parser->currentTokenIndex];
+	Token* nextToken = parser->tokens[parser->currentTokenIndex++];
 	if (nextToken->type == TK_NEWLINE) emitError(ERR_INVALID_SYNTAX, &linedata, "The `.include` directive must be followed by a filename.");
 	if (nextToken->type != TK_STRING) emitError(ERR_INVALID_SYNTAX, &linedata, "The `.include` directive must be followed by a string, got `%s`.", nextToken->lexeme);
 	sds filename = sdsnewlen(nextToken->lexeme + 1, sdslen(nextToken->lexeme) - 2);
@@ -808,7 +810,7 @@ void handleInclude(Parser* parser) {
 			struct_root_t* newStruct = initStruct(structRoot->name);
 			for (int j = 0; j < structRoot->fieldCount; j++) {
 				struct_field_t* field = structRoot->fields[j];
-				struct_field_t* newField = initStructField(field->name, field->type, field->offset, field->size, field->structTypeIdx);
+				struct_field_t* newField = initStructField(field->name, field->type, field->size, field->offset, field->structTypeIdx);
 				newField->source = field->source;
 				newField->linenum = field->linenum;
 				addStructField(newStruct, newField);
@@ -873,18 +875,6 @@ void handleDef(Parser* parser, Node* directiveRoot) {
 	linedata.linenum = nextToken->linenum;
 	linedata.source = ssGetString(nextToken->sstring);
 
-	// In the case that a field has its def-type as the def itself (similar to linked list node)
-	// Allow it but for the size, have it be 0 and for structTypeIdx, have it be the current size of the struct table
-	// As when the struct will be added, its index will be that size (before increment)
-	// Regarding the size being 0 (and subsequent fields being offset by 0), after going through the fields,
-	//  loop starting where the (def-type) field is defined, replace the size with the actual size,
-	//  and add the actual size to the offsets of subsequent fields
-	bool hasSelfReference = false;
-	// In the case that there are multiple self-references, there is only need to keep track of the first one
-	// As the subsequent ones will be handled when going through the fields after
-	int selfReferenceFieldIndex = -1; // The index where the first self-reference field is at
-	int structSize = 0; // Not really needed as it is in the struct-def itself but for ease of access
-
 	// Now to loop "forever" to get the fields
 	// However, need some way to stop. What if `}` is missing
 	// Actually, I think this is where the EOF token really comes in handy
@@ -948,13 +938,10 @@ void handleDef(Parser* parser, Node* directiveRoot) {
 				emitError(ERR_INVALID_TYPE, &linedata, "Invalid basic type for struct field: `%s`. Only 8, 16, and 32 are allowed.", nextToken->lexeme);
 			}
 		} else {
+			// In the case that the type is itself, disallow
 			if (sdscmp(nextToken->lexeme, structNameToken->lexeme) == 0) {
-				// Self-reference
-				hasSelfReference = true;
-				if (selfReferenceFieldIndex == -1) selfReferenceFieldIndex = defStruct->fieldCount;
-				fieldType = STRUCT_FT;
-				size = 0; // Will update later
-				structTypeIdx = parser->structTable->size; // As it will be added, its index will be the current size
+				emitError(ERR_INVALID_TYPE, &linedata, "Struct field `%s` in struct `%s` cannot be of the same struct type. Consider using a pointer type.", 
+						fieldNameToken->lexeme, structNameToken->lexeme);
 			} else {
 				// Defined type, so check if it exists
 				struct_root_t* fieldDefStruct = getStructByName(parser->structTable, nextToken->lexeme);
@@ -983,24 +970,6 @@ void handleDef(Parser* parser, Node* directiveRoot) {
 	parser->currentTokenIndex++; // Consume the '}' token
 
 	addStruct(parser->structTable, defStruct);
-
-	// If there is self-reference, need to go through the fields starting from the self-reference field index
-	if (hasSelfReference) {
-		structSize = defStruct->size; // The size before updating the self-reference field
-		for (int i = selfReferenceFieldIndex; i < defStruct->fieldCount; i++) {
-			struct_field_t* field = defStruct->fields[i];
-			if (field->size == 0 && field->structTypeIdx == defStruct->index) {
-				// This is the self-reference field, update its size
-				field->size = structSize;
-				field->offset = defStruct->size; // Its offset is the current size
-				defStruct->size += field->size;
-			} else {
-				// Subsequent fields, just update their offsets
-				field->offset = defStruct->size;
-				defStruct->size += field->size;
-			}
-		}
-	}
 }
 
 void handleSizeof(Parser *parser, Node *directiveRoot)
