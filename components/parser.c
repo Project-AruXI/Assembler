@@ -151,6 +151,8 @@ static void parseIdentifier(Parser* parser) {
 	else emitError(ERR_INTERNAL, &linedata, "Instruction `%s` could not be categorized into a type.", idToken->lexeme);
 
 	addAst(parser, instructionRoot);
+
+	parser->sectionTable->entries[parser->sectionTable->activeSection].lp += 4;
 }
 
 static void parseDirective(Parser* parser) {
