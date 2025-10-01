@@ -113,6 +113,7 @@ void lexLine(Lexer* lexer, const char* line) {
 	// Add the newline token at the end of the line
 	// Treat EOF as a newline so there's no `if type == TK_NEWLINE && TK_EOF` many times later
 	if (tok && (tok->type == TK_NEWLINE || tok->type == TK_EOF)) {
+		if (tok->type == TK_EOF) tok->type = TK_NEWLINE; // No need to change everything else since stuff uses ->type
 		lexer->line = sourceLine;
 		addToken(lexer, tok);
 		// printToken(tok);
