@@ -124,12 +124,14 @@ typedef struct TypeNode {
 		TYPE_PTR
 	};
 
+	struct ASTNode* child;
+
 	union {
 		enum Type mainType;
 		enum Type subType;
 		int structTableIndex; // If subType is TYPE_STRUCT, the index of the struct in the struct table
 	};
-	// Know what type it is will be inferred from context/going throught the AST
+	// Knowing what type it is will be inferred from context/going throught the AST
 	// Since if the previous AST Node is a .type directive, then this is a main type
 	// And thus if the previous is a main type, this is a subtype
 	// Finally if the previous is a subtype, this is a tag type
@@ -159,7 +161,22 @@ typedef struct ASTNode {
 } Node;
 
 
+/**
+ * Initializes a new AST node. Note that the AST node itself does not contain specific information about the type of node.
+ * That will be supplied by the specified `nodeData`.
+ * @param astNodeType The type of AST node (leaf, internal, root)
+ * @param nodeType The type that this node will represent
+ * @param token The token associated
+ * @param parent The parent node, NULL if root
+ * @return The AST node
+ */
 Node* initASTNode(astNode_t astNodeType, node_t nodeType, Token* token, Node* parent);
+/**
+ * Sets specific data to the (generic) AST node. The type of data is determined by nodeType.
+ * @param node The generic AST node
+ * @param nodeData The specific data
+ * @param nodeType The specific type of data/node
+ */
 void setNodeData(Node* node, void* nodeData, node_t nodeType);
 void freeAST(Node* root);
 void printAST(Node* root);
@@ -204,8 +221,29 @@ void deinitRegisterNode(RegNode* regNode);
 DirctvNode* initDirectiveNode();
 void deinitDirectiveNode(DirctvNode* dirctvNode);
 
+/**
+ * Sets the AST node data for a unary directive (one argument) node.
+ * Note that dirctvNode is just a subset of the directive AST node.
+ * @param dirctvNode The directive node
+ * @param data The child data
+ */
 void setUnaryDirectiveData(DirctvNode* dirctvNode, Node* data);
+/**
+ * Sets the AST node data for a binary directive (two arguments) node.
+ * This is specifically for directives where the first argument is a symbol (as of the current ISA).
+ * Note that dirctvNode is just a subset of the directive AST node.
+ * @param dirctvNode The directive node
+ * @param symb The symbol AST node
+ * @param data The child data
+ */
 void setBinaryDirectiveData(DirctvNode* dirctvNode, Node* symb, Node* data);
+/**
+ * Adds an expression to the n-ary directive (multiple arguments) node.
+ * Note that dirctvNode is just a subset of the directive AST node.
+ * The directive node must already have been initialized with an empty expression array before the first call to this function.
+ * @param dirctvNode The directive node
+ * @param expr The root of the expression AST to add
+ */
 void addNaryDirectiveData(DirctvNode* dirctvNode, Node* expr);
 
 
@@ -236,7 +274,13 @@ void deinitOperatorNode(OpNode* opNode);
 TypeNode* initTypeNode();
 void deinitTypeNode(TypeNode* typeNode);
 
-
+/**
+ * Sets the AST node data for a unary type (one argument) node.
+ * Note that typeNode is just a subset of the type AST node.
+ * @param typeNode The parent type data node
+ * @param typeData The child type AST node
+ */
+void setUnaryTypeData(TypeNode* typeNode, Node* typeData);
 
 
 

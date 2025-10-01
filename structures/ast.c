@@ -149,6 +149,9 @@ void printAST(Node* root) {
 		case ND_INSTRUCTION:
 			// Print instruction-specific details if needed
 			break;
+		case ND_REGISTER:
+			// Print register-specific details if needed
+			break;
 		case ND_DIRECTIVE: {
 			DirctvNode* dirNode = root->nodeData.directive;
 			if (!dirNode) break;
@@ -188,6 +191,13 @@ void printAST(Node* root) {
 			break;
 		case ND_OPERATOR:
 			// Print operator-specific details if needed
+			break;
+		case ND_TYPE:
+			TypeNode* typeNode = root->nodeData.type;
+			if (typeNode && typeNode->child) {
+				rlog("      Type Child:");
+				printAST(typeNode->child);
+			}
 			break;
 		default:
 			break;
@@ -364,9 +374,21 @@ void deinitOperatorNode(OpNode* opNode) {
 }
 
 TypeNode* initTypeNode() {
-	return NULL;
+	TypeNode* typeNode = (TypeNode*) malloc(sizeof(TypeNode));
+	if (!typeNode) emitError(ERR_MEM, NULL, "Failed to allocate memory for type node.");
+
+	typeNode->child = NULL;
+	typeNode->mainType = -1;
+	typeNode->subType = -1;
+	typeNode->structTableIndex = -1;
+
+	return typeNode;
 }
 
 void deinitTypeNode(TypeNode* typeNode) {
 	free(typeNode);
+}
+
+void setUnaryTypeData(TypeNode* typeNode, Node* typeData) {
+	typeNode->child = typeData;
 }

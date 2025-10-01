@@ -34,6 +34,8 @@ typedef struct StructRoot {
 
 	SString* source; // The source file where the struct was defined
 	int linenum; // The line number where the struct was defined
+
+	int index; // The index of this struct in the table
 } struct_root_t;
 
 typedef struct StructDefTable {

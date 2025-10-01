@@ -557,13 +557,162 @@ void handleFill(Parser *parser, Node *directiveRoot)
 {
 }
 
+
 void handleSize(Parser *parser, Node *directiveRoot)
 {
 }
 
-void handleType(Parser *parser, Node *directiveRoot)
-{
+void handleType(Parser* parser, Node* directiveRoot) {
+	initScope("handleType");
+
+	Token* directiveToken = parser->tokens[parser->currentTokenIndex++];
+	linedata_ctx linedata = {
+		.linenum = directiveToken->linenum,
+		.source = ssGetString(directiveToken->sstring)
+	};
+
+	directiveToken->type = TK_D_TYPE;
+
+	DirctvNode* directiveData = initDirectiveNode();
+	setNodeData(directiveRoot, directiveData, ND_DIRECTIVE);
+
+	log("Handling .type directive at line %d", directiveToken->linenum);
+
+	// The directive is in the form of `.type symbol, $[MainType]{.[SubType]{.[Tag]}}`
+
+	Token* nextToken = parser->tokens[parser->currentTokenIndex];
+	if (nextToken->type == TK_NEWLINE) emitError(ERR_INVALID_SYNTAX, &linedata, "The `.type` directive must be followed by a symbol and a type.");
+	if (nextToken->type != TK_IDENTIFIER) emitError(ERR_INVALID_SYNTAX, &linedata, "The `.type` directive must be followed by an identifier, got `%s`.", nextToken->lexeme);
+	// Since the lexer bunched up many things under TK_IDENTIFIER, it needs to be checked whether the token is actually a symbol
+	// What constitutes a symbol is the same as for a label, just reuse the logic
+	validateSymbolToken(nextToken, &linedata);
+	Token* symbToken = nextToken;
+
+	Node* symbNode = initASTNode(AST_LEAF, ND_SYMB, symbToken, directiveRoot);
+	SymbNode* symbData = initSymbolNode(-1, 0); // -1 for now, will update later
+	setNodeData(symbNode, symbData, ND_SYMB);
+	// Not setting the directive children until the data type is acquired
+
+	symb_entry_t* symbEntry = getSymbolEntry(parser->symbolTable, symbToken->lexeme);
+	if (!symbEntry) {
+		// Since .type only sets the type status, and this is its first sighting, not much is known
+		// Just go with defaults/assumptions that it is absolute, no type, and value
+		// Also, since this is just a directive, there will be no activeSection info
+		SYMBFLAGS flags = CREATE_FLAGS(M_ABS, T_NONE, E_VAL, S_UNDEF, L_LOC, R_NREF, D_UNDEF);
+		symbEntry = initSymbolEntry(symbToken->lexeme, flags, NULL, 0, NULL, -1);
+		addSymbolEntry(parser->symbolTable, symbEntry);
+	}
+	symbEntry->structTypeIdx = -1; // This might be changed later on encountering the tag token
+
+	parser->currentTokenIndex++; // Consume the symbol token
+	// Make sure comma is next
+	nextToken = parser->tokens[parser->currentTokenIndex];
+	if (nextToken->type != TK_COMMA) emitError(ERR_INVALID_SYNTAX, &linedata, "The `.type` directive must have a comma after the symbol.");
+	parser->currentTokenIndex++; // Consume the comma
+
+	// Onwards to the main type
+	nextToken = parser->tokens[parser->currentTokenIndex];
+	if (nextToken->type != TK_MAIN_TYPE) emitError(ERR_INVALID_SYNTAX, &linedata, "The `.type` directive must be followed by a main type, got `%s`.", nextToken->lexeme);
+
+	// Make sure the main type is a valid main type
+	TypeNode* mainTypeData = initTypeNode();
+	if (strcasecmp(nextToken->lexeme, "$function") == 0) mainTypeData->mainType = TYPE_FUNC;
+	else if (strcasecmp(nextToken->lexeme, "$object") == 0) mainTypeData->mainType = TYPE_OBJECT;
+	else emitError(ERR_INVALID_TYPE, &linedata, "Invalid main type in `.type` directive: `%s`.", nextToken->lexeme);
+	Token* mainTypeToken = nextToken;
+
+	Node* mainTypeNode = initASTNode(AST_INTERNAL, ND_TYPE, mainTypeToken, directiveRoot);
+	setNodeData(mainTypeNode, mainTypeData, ND_TYPE);
+	setBinaryDirectiveData(directiveData, symbNode, mainTypeNode); // Connect symb and main type to directive
+
+	// Update the symbol's type
+	// Because of the value of M_* differs than that of TYPE_* by 2, need to add 2
+	// M_FUNC is 2 while TYPE_FUNC is 0
+	// M_OBJECT is 3 while TYPE_OBJECT is 1
+	symbEntry->flags = SET_MAIN_TYPE(symbEntry->flags, (mainTypeData->mainType + 2));
+
+	parser->currentTokenIndex++; // Consume the main type token
+
+
+	// Check for optional sub-type by detecting a dot
+	nextToken = parser->tokens[parser->currentTokenIndex];
+	if (nextToken->type == TK_NEWLINE) {
+		// Since main type is the end, mark it as leaf
+		mainTypeNode->astNodeType = AST_LEAF;
+		return;
+	}
+	if (nextToken->type != TK_DOT) emitError(ERR_INVALID_SYNTAX, &linedata, "Expected newline or `.` after main type in `.type` directive, got `%s`.", nextToken->lexeme);
+	parser->currentTokenIndex++; // Consume the dot
+
+	nextToken = parser->tokens[parser->currentTokenIndex];
+	if (nextToken->type != TK_IDENTIFIER) emitError(ERR_INVALID_SYNTAX, &linedata, "The `.type` directive must be followed by a sub-type after the dot, got `%s`.", nextToken->lexeme);
+	// Since the lexer bunched many things under TK_IDENTIFIER, need to check if it is
+	// Make sure the sub-type is a valid sub-type
+	TypeNode* subTypeData = initTypeNode();
+	if (strcasecmp(nextToken->lexeme, "array") == 0) subTypeData->subType = TYPE_ARRAY;
+	else if (strcasecmp(nextToken->lexeme, "ptr") == 0) subTypeData->subType = TYPE_PTR;
+	else if (strcasecmp(nextToken->lexeme, "struct") == 0) subTypeData->subType = TYPE_STRUCT;
+	else if (strcasecmp(nextToken->lexeme, "union") == 0) subTypeData->subType = TYPE_UNION;
+	else emitError(ERR_INVALID_TYPE, &linedata, "Invalid sub-type in `.type` directive: `%s`.", nextToken->lexeme);
+	Token* subTypeToken = nextToken;
+	subTypeToken->type = TK_SUB_TYPE;
+
+	Node* subTypeNode = initASTNode(AST_INTERNAL, ND_TYPE, subTypeToken, mainTypeNode);
+	setNodeData(subTypeNode, subTypeData, ND_TYPE);
+	setUnaryTypeData(mainTypeData, subTypeNode);
+
+	// Update the symbol's type
+	// Because of the value of T_* differs than that of TYPE_* by 1, need to add 1
+	// T_NONE is 0 while TYPE_NONE is 0
+	// T_ARRAY is 1 while TYPE_ARRAY is 1
+	// T_PTR is 2 while TYPE_PTR is 2
+	// T_STRUCT is 3 while TYPE_STRUCT is 3
+	// T_UNION is 4 while TYPE_UNION is 4
+	symbEntry->flags = SET_SUB_TYPE(symbEntry->flags, (subTypeData->subType + 1));
+
+	parser->currentTokenIndex++; // Consume the sub-type token
+
+
+	// Check for optional tag by detecting a dot
+	nextToken = parser->tokens[parser->currentTokenIndex];
+	if (nextToken->type == TK_NEWLINE) {
+		// Since subtype type is the end, mark it as leaf
+		subTypeNode->astNodeType = AST_LEAF;
+		return;
+	}
+	if (nextToken->type != TK_DOT) emitError(ERR_INVALID_SYNTAX, &linedata, "Expected newline or `.` after sub type in `.type` directive, got `%s`.", nextToken->lexeme);
+	parser->currentTokenIndex++;
+
+	nextToken = parser->tokens[parser->currentTokenIndex];
+	if (nextToken->type != TK_IDENTIFIER) emitError(ERR_INVALID_SYNTAX, &linedata, "The `.type` directive must be followed by a tag after the dot, got `%s`.", nextToken->lexeme);
+
+
+	// Recall that the lexer bunched many things under TK_IDENTIFIER, so need to check if it is a valid tag
+	// Valid tag as in same thing as a symbol (after all, the tags are just symbol names)
+	validateSymbolToken(nextToken, &linedata);
+	Token* tagToken = nextToken;
+	tagToken->type = TK_SUB_TYPE; // Maybe have the tag as identifier type???
+
+	// Optional check, use the symbol table to see if the user used a symbol rather than a struct
+
+	// .def declarations must be declared before use, check if it exists
+	struct_root_t* structRoot = getStructByName(parser->structTable, tagToken->lexeme);
+	if (!structRoot) emitError(ERR_UNDEFINED, &linedata, "Tag in `.type` directive is not defined: `%s`.", tagToken->lexeme);
+
+	TypeNode* tagTypeData = initTypeNode();
+	tagTypeData->structTableIndex = structRoot->index;
+	Node* tagNode = initASTNode(AST_LEAF, ND_SYMB, tagToken, subTypeNode);
+	setNodeData(tagNode, tagTypeData, ND_TYPE);
+	setUnaryTypeData(subTypeData, tagNode);
+	
+	// Thinking about it, should the tag be allowed for non-defs? For example, `.type arr, $object.array.byte` where byte is not a def
+	//  and it means an array of bytes???? Need to rework it if so
+	// For now, it is only structs/union
+
+	// Update the symbol's struct type index
+	symbEntry->structTypeIdx = structRoot->index;
 }
+
 
 void handleAlign(Parser *parser, Node *directiveRoot)
 {
@@ -676,8 +825,7 @@ void handleInclude(Parser* parser) {
 	free(context.asts);
 }
 
-void handleDef(Parser *parser, Node *directiveRoot)
-{
+void handleDef(Parser* parser, Node* directiveRoot) {
 }
 
 void handleSizeof(Parser *parser, Node *directiveRoot)

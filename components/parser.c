@@ -168,9 +168,9 @@ static void parseDirective(Parser* parser) {
 		case ALIGN:
 		case SIZE:
 		case EXTERN:
-		case TYPE:
+		case TYPE: handleType(parser, directiveRoot); break;
 		case SIZEOF:
-		case DEF:
+		case DEF: handleDef(parser, directiveRoot); break;
 		case INCLUDE: handleInclude(parser); break;
 		case TYPEINFO:
 			parser->currentTokenIndex++;

@@ -78,6 +78,7 @@ int addStruct(StructTable* structTable, struct_root_t* structDef) {
 		if (!temp) emitError(ERR_MEM, NULL, "Failed to reallocate memory for struct table entries.");
 		structTable->structs = temp;
 	}
+	structDef->index = structTable->size;
 	structTable->structs[structTable->size++] = structDef;
 
 	return structTable->size - 1;

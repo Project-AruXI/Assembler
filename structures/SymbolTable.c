@@ -178,7 +178,7 @@ void displaySymbolEntry(symb_entry_t* entry) {
 		rtrace("Flags:  %s", flagToString(entry->flags));
 		rtrace("Size:   %u bytes", entry->size);
 		rtrace("Line:   %d", entry->linenum);
-		rtrace("Source: %s", ssGetString(entry->source));
+		rtrace("Source: %s", (entry->source) ? ssGetString(entry->source) : "(unknown)");
 		if (GET_EXPRESSION(entry->flags)) {
 			rtrace("Value:  [Expression AST]");
 		} else {
