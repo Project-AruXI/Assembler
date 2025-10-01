@@ -145,6 +145,11 @@ void displayStructTable(StructTable* structTable) {
 		rtrace("| %-3d | %-20s | %-6d | %-6d |", i, s->name, s->fieldCount, s->size);
 	}
 	rtrace("-----------------------------------------------------\n");
+
+	// Display the structs in detail
+	for (int i = 0; i < structTable->size; i++) {
+		displayStruct(structTable->structs[i]);
+	}
 }
 
 void displayStruct(struct_root_t* structDef) {
@@ -152,6 +157,7 @@ void displayStruct(struct_root_t* structDef) {
 		rtrace("[Null struct definition]\n");
 		return;
 	}
+
 	rtrace("\n==================== Struct Definition ====================");
 	rtrace("Name: %s", structDef->name);
 	rtrace("Size: %d bytes", structDef->size);
@@ -160,8 +166,19 @@ void displayStruct(struct_root_t* structDef) {
 	rtrace("| %-3s | %-16s | %-8s | %-6s | %-6s |", "#", "Field Name", "Type", "Size", "Offset");
 	rtrace("----------------------------------------------------------");
 	for (int i = 0; i < structDef->fieldCount; i++) {
-		struct_field_t* f = structDef->fields[i];
-		rtrace("| %-3d | %-16s | %-8d | %-6d | %-6d |", i, f->name, f->type, f->size, f->offset);
+		struct_field_t* field = structDef->fields[i];
+
+		char* typeStr = NULL;
+		switch (field->type) {
+			case BYTE_FT: typeStr = "BYTE"; break;
+			case HWORD_FT: typeStr = "HWORD"; break;
+			case WORD_FT: typeStr = "WORD"; break;
+			case STRUCT_FT: typeStr = "STRUCT"; break;
+			case UNION_FT: typeStr = "UNION"; break;
+			default: typeStr = "UNKNOWN"; break;
+		}
+
+		rtrace("| %-3d | %-16s | %-8s | %-6d | %-6d |", i, field->name, typeStr, field->size, field->offset);
 	}
 	rtrace("----------------------------------------------------------\n");
 }
