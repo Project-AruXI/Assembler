@@ -826,6 +826,181 @@ void handleInclude(Parser* parser) {
 }
 
 void handleDef(Parser* parser, Node* directiveRoot) {
+	initScope("handleDef");
+
+	Token* directiveToken = parser->tokens[parser->currentTokenIndex++];
+	linedata_ctx linedata = {
+		.linenum = directiveToken->linenum,
+		.source = ssGetString(directiveToken->sstring)
+	};
+
+	directiveToken->type = TK_D_DEF;
+
+	DirctvNode* directiveData = initDirectiveNode();
+	setNodeData(directiveRoot, directiveData, ND_DIRECTIVE);
+
+	log("Handling .def directive at line %d", directiveToken->linenum);
+
+	// The directive is in the form of `.def StructName { field1: type1. field2:: type2. ... }`
+
+	Token* nextToken = parser->tokens[parser->currentTokenIndex];
+	if (nextToken->type == TK_NEWLINE) emitError(ERR_INVALID_SYNTAX, &linedata, "The `.def` directive must be followed by a struct name.");
+	if (nextToken->type != TK_IDENTIFIER) emitError(ERR_INVALID_SYNTAX, &linedata, "The `.def` directive must be followed by an identifier, got `%s`.", nextToken->lexeme);
+	// Since the lexer bunched up many things under TK_IDENTIFIER, need to check if it is actually a symbol
+	// What constitutes a symbol is the same as for a label, just reuse the logic
+	validateSymbolToken(nextToken, &linedata);
+	Token* structNameToken = nextToken;
+
+	struct_root_t* defStruct = getStructByName(parser->structTable, structNameToken->lexeme);
+	// Make sure it has not be defined
+	if (defStruct) emitError(ERR_REDEFINED, &linedata, "Struct redefinition: `%s`. First defined at `%s`", structNameToken->lexeme, ssGetString(defStruct->source));
+	defStruct = initStruct(structNameToken->lexeme);
+	defStruct->source = structNameToken->sstring;
+	defStruct->linenum = structNameToken->linenum;
+
+	parser->currentTokenIndex++; // Consume the struct name token
+
+	nextToken = parser->tokens[parser->currentTokenIndex];
+	if (nextToken->type != TK_LBRACKET) emitError(ERR_INVALID_SYNTAX, &linedata, "Expected `{`, got `%s`.", nextToken->lexeme);
+	parser->currentTokenIndex++; // Consume the '{' token
+
+	nextToken = parser->tokens[parser->currentTokenIndex];
+	// Now, the next can either be newlines or the field themselves
+	while (nextToken->type == TK_NEWLINE) {
+		parser->currentTokenIndex++; // Consume the newline
+		nextToken = parser->tokens[parser->currentTokenIndex];
+	}
+	linedata.linenum = nextToken->linenum;
+	linedata.source = ssGetString(nextToken->sstring);
+
+	// In the case that a field has its def-type as the def itself (similar to linked list node)
+	// Allow it but for the size, have it be 0 and for structTypeIdx, have it be the current size of the struct table
+	// As when the struct will be added, its index will be that size (before increment)
+	// Regarding the size being 0 (and subsequent fields being offset by 0), after going through the fields,
+	//  loop starting where the (def-type) field is defined, replace the size with the actual size,
+	//  and add the actual size to the offsets of subsequent fields
+	bool hasSelfReference = false;
+	// In the case that there are multiple self-references, there is only need to keep track of the first one
+	// As the subsequent ones will be handled when going through the fields after
+	int selfReferenceFieldIndex = -1; // The index where the first self-reference field is at
+	int structSize = 0; // Not really needed as it is in the struct-def itself but for ease of access
+
+	// Now to loop "forever" to get the fields
+	// However, need some way to stop. What if `}` is missing
+	// Actually, I think this is where the EOF token really comes in handy
+	// But as mentioned in lexer, the EOF gets the same type as a newline but keeps the lexeme as "EOF"
+	// Kind of costly but in the check for newline, can also check if lexeme is "EOF"
+
+	while (nextToken->type != TK_RBRACKET) {
+		// Each field is in the form of `fieldName: basic-type.` or `fieldName:: def-type.`
+
+		if (nextToken->type == TK_NEWLINE) {
+			if (sdscmp(nextToken->lexeme, "EOF") == 0) emitError(ERR_INVALID_SYNTAX, &linedata, "Unexpected end of file while parsing `.def` directive for struct `%s`.", structNameToken->lexeme);
+
+			parser->currentTokenIndex++;
+			nextToken = parser->tokens[parser->currentTokenIndex];
+
+			// Update linedata
+			linedata.linenum = nextToken->linenum;
+			linedata.source = ssGetString(nextToken->sstring);
+			continue;
+		}
+
+
+		if (nextToken->type != TK_IDENTIFIER) emitError(ERR_INVALID_SYNTAX, &linedata, "Expected field name identifier, got `%s`.", nextToken->lexeme);
+		validateSymbolToken(nextToken, &linedata);
+		Token* fieldNameToken = nextToken;
+
+		parser->currentTokenIndex++; // Consume the field name token
+
+		nextToken = parser->tokens[parser->currentTokenIndex];
+		if (nextToken->type != TK_COLON && nextToken->type != TK_COLON_COLON) emitError(ERR_INVALID_SYNTAX, &linedata, "Expected `:` or `::` after field name, got `%s`.", nextToken->lexeme);
+
+		parser->currentTokenIndex++; // Consume the colon/colon-colon token
+
+		bool isNumericType = (nextToken->type == TK_COLON) ? true : false;
+
+		nextToken = parser->tokens[parser->currentTokenIndex];
+		if (nextToken->type == TK_INTEGER && parser->tokens[parser->currentTokenIndex-1]->type == TK_COLON_COLON) {
+			emitError(ERR_INVALID_SYNTAX, &linedata, "Expected defined type but got integer `%s`. Did you mean to use `:` instead of `::`?", nextToken->lexeme);
+		} else if (nextToken->type == TK_IDENTIFIER && parser->tokens[parser->currentTokenIndex-1]->type == TK_COLON) {
+			emitError(ERR_INVALID_SYNTAX, &linedata, "Expected basic type but got identifier `%s`. Did you mean to use `::` instead of `:`?", nextToken->lexeme);
+		}
+		if (nextToken->type != TK_INTEGER && nextToken->type != TK_IDENTIFIER) emitError(ERR_INVALID_SYNTAX, &linedata, "Expected numeric type after `:` or def type after `::`, got `%s`.", nextToken->lexeme);
+
+		structFieldType fieldType = BYTE_FT;
+		int size = 0;
+		int structTypeIdx = -1; // Only used if fieldType is STRUCT_FT
+
+		// Check the types are appropriate, per type
+		if (isNumericType) {
+			// Updated field type and size
+			if (*nextToken->lexeme == '8') {
+				fieldType = BYTE_FT;
+				size = 1;
+			} else if (*nextToken->lexeme == '1' && *(nextToken->lexeme + 1) == '6') {
+				fieldType = HWORD_FT;
+				size = 2;
+			} else if (*nextToken->lexeme == '3' && *(nextToken->lexeme + 1) == '2') {
+				fieldType = WORD_FT;
+				size = 4;
+			} else {
+				emitError(ERR_INVALID_TYPE, &linedata, "Invalid basic type for struct field: `%s`. Only 8, 16, and 32 are allowed.", nextToken->lexeme);
+			}
+		} else {
+			if (sdscmp(nextToken->lexeme, structNameToken->lexeme) == 0) {
+				// Self-reference
+				hasSelfReference = true;
+				if (selfReferenceFieldIndex == -1) selfReferenceFieldIndex = defStruct->fieldCount;
+				fieldType = STRUCT_FT;
+				size = 0; // Will update later
+				structTypeIdx = parser->structTable->size; // As it will be added, its index will be the current size
+			} else {
+				// Defined type, so check if it exists
+				struct_root_t* fieldDefStruct = getStructByName(parser->structTable, nextToken->lexeme);
+				if (!fieldDefStruct) emitError(ERR_UNDEFINED, &linedata, "Undefined struct type for struct field: `%s`.", nextToken->lexeme);
+				fieldType = STRUCT_FT;
+				size = fieldDefStruct->size;
+				structTypeIdx = fieldDefStruct->index;
+			}
+		}
+
+		struct_field_t* newField = initStructField(fieldNameToken->lexeme, fieldType, size, defStruct->size, structTypeIdx);
+		newField->source = fieldNameToken->sstring;
+		newField->linenum = fieldNameToken->linenum;
+		bool added = addStructField(defStruct, newField);
+		if (!added) emitError(ERR_REDEFINED, &linedata, "Redefinition of field `%s` in struct `%s`.", fieldNameToken->lexeme, structNameToken->lexeme);
+
+		// Finished with this field, next token needs to be the dot
+		parser->currentTokenIndex++; // Consume the type token
+		nextToken = parser->tokens[parser->currentTokenIndex];
+		if (nextToken->type != TK_DOT) emitError(ERR_INVALID_SYNTAX, &linedata, "Expected `.` after struct field type, got `%s`.", nextToken->lexeme);
+		parser->currentTokenIndex++; // Consume the dot token
+		nextToken = parser->tokens[parser->currentTokenIndex];
+	}
+
+	// Finished all fields, nextToken is '}'
+	parser->currentTokenIndex++; // Consume the '}' token
+
+	addStruct(parser->structTable, defStruct);
+
+	// If there is self-reference, need to go through the fields starting from the self-reference field index
+	if (hasSelfReference) {
+		structSize = defStruct->size; // The size before updating the self-reference field
+		for (int i = selfReferenceFieldIndex; i < defStruct->fieldCount; i++) {
+			struct_field_t* field = defStruct->fields[i];
+			if (field->size == 0 && field->structTypeIdx == defStruct->index) {
+				// This is the self-reference field, update its size
+				field->size = structSize;
+				field->offset = defStruct->size; // Its offset is the current size
+				defStruct->size += field->size;
+			} else {
+				// Subsequent fields, just update their offsets
+				field->offset = defStruct->size;
+				defStruct->size += field->size;
+			}
+		}
+	}
 }
 
 void handleSizeof(Parser *parser, Node *directiveRoot)
