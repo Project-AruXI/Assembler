@@ -55,7 +55,8 @@ void handleSet(Parser* parser, Node* directiveRoot);
 void handleGlob(Parser* parser, Node* directiveRoot);
 
 /**
- * 
+ * Handles the `.string` directive. The directive is used to define string data in the current section.
+ * The string will be parsed and added as a child to the directive's AST node.
  * @param parser The parser
  * @param directiveRoot The AST node representing the directive
  */
@@ -81,5 +82,21 @@ void handleExtern(Parser* parser, Node* directiveRoot);
 void handleInclude(Parser* parser);
 void handleDef(Parser* parser, Node* directiveRoot);
 void handleSizeof(Parser* parser, Node* directiveRoot);
+
+
+
+// Instruction handlers
+
+void handleIR(Parser* parser, Node* instrRoot);
+void handleI(Parser* parser, Node* instrRoot);
+void handleR(Parser* parser, Node* instrRoot);
+void handleM(Parser* parser, Node* instrRoot);
+void handleBi(Parser* parser, Node* instrRoot);
+void handleBu(Parser* parser, Node* instrRoot);
+void handleBc(Parser* parser, Node* instrRoot);
+void handleS(Parser* parser, Node* instrRoot);
+void handleF(Parser* parser, Node* instrRoot);
+
+
 
 #endif

@@ -234,18 +234,36 @@ Node** nodeArrayInsert(Node** array, int* capacity, int* count, Node* node) {
 }
 
 
-InstrNode* initInstructionNode() {
-	return NULL;
+InstrNode* initInstructionNode(enum Instructions instruction) {
+	InstrNode* instrNode = (InstrNode*) malloc(sizeof(InstrNode));
+	if (!instrNode) emitError(ERR_MEM, NULL, "Failed to allocate memory for instruction node.");
+
+	instrNode->instruction = instruction;
+
+	// Need to null all of `data`
+	// However, since it is a union of various structs, need to use the largest struct to null
+	instrNode->data.mType.xd = NULL;
+	instrNode->data.mType.xs = NULL;
+	instrNode->data.mType.xr = NULL;
+	instrNode->data.mType.imm = NULL;
+
+	return instrNode;
 }
 
 void deinitInstructionNode(InstrNode* instrNode) {
 }
 
-RegNode* initRegisterNode() {
-	return NULL;
+RegNode* initRegisterNode(int regNumber) {
+	RegNode* regNode = (RegNode*) malloc(sizeof(RegNode));
+	if (!regNode) emitError(ERR_MEM, NULL, "Failed to allocate memory for register node.");
+
+	regNode->regNumber = regNumber;
+
+	return regNode;
 }
 
 void deinitRegisterNode(RegNode* regNode) {
+	free(regNode);
 }
 
 DirctvNode* initDirectiveNode() {
@@ -328,6 +346,18 @@ NumNode* initNumberNode(NumType type, int32_t intValue, float floatValue) {
 			break;
 		case NTYPE_FLOAT:
 			numNode->value.floatValue = floatValue;
+			break;
+		case NTYPE_INT24: 
+			numNode->value.int24Value = (int32_t) intValue;
+			break;
+		case NTYPE_INT19: 
+			numNode->value.int19Value = (int32_t) intValue;
+			break;
+		case NTYPE_INT9: 
+			numNode->value.int9Value = (int16_t) intValue;
+			break;
+		case NTYPE_UINT14: 
+			numNode->value.uint14Value = (uint16_t) intValue;
 			break;
 		default:
 			emitError(ERR_INTERNAL, NULL, "Invalid number type in initNumberNode.");

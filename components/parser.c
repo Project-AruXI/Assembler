@@ -134,6 +134,9 @@ static void parseIdentifier(Parser* parser) {
 	enum Instructions instruction = (enum Instructions) index;
 	log("Parsing instruction: `%s`. Set type to `%s`", idToken->lexeme, INSTRUCTIONS[instruction]);
 
+	InstrNode* instructionData = initInstructionNode(instruction);
+	setNodeData(instructionRoot, instructionData, ND_INSTRUCTION);
+
 	// Go with same system as the old/legacy assembler
 
 	if (instruction >= IR_TYPE_IDX && instruction < I_TYPE_IDX) handleIR(parser, instructionRoot);
@@ -147,7 +150,7 @@ static void parseIdentifier(Parser* parser) {
 	else if (instruction >= F_TYPE_IDX) handleF(parser, instructionRoot);
 	else emitError(ERR_INTERNAL, &linedata, "Instruction `%s` could not be categorized into a type.", idToken->lexeme);
 
-	parser->currentTokenIndex++;
+	addAst(parser, instructionRoot);
 }
 
 static void parseDirective(Parser* parser) {

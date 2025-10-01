@@ -2,6 +2,7 @@
 #define _AST_H_
 
 #include "token.h"
+#include "reserved.h"
 
 
 typedef enum {
@@ -25,7 +26,52 @@ typedef enum {
 
 
 typedef struct InstructionNode {
+	enum Instructions instruction;
+	// The arguments will depend on the instruction type
 
+	union {
+		struct {
+			struct ASTNode* xd;
+			struct ASTNode* xs; // NULL for unary operations like MV
+			struct ASTNode* imm;
+		} iType; // For I-type instructions
+
+		struct {
+			struct ASTNode* xd;
+			struct ASTNode* xs;
+			struct ASTNode* xr; // NULL for unary operations like MV
+		} rType; // For R-type instructions
+
+		struct {
+			struct ASTNode* xd;
+			struct ASTNode* xs;
+			struct ASTNode* xr;
+			struct ASTNode* imm;
+			// When all but `imm` is null, it signifies the LD immediate form
+			// This form allows `=imm` or `imm` where `=imm` signifies to simply move the big immediate into the register
+			//  while `imm` signifies to load from the address of the immediate value
+			// Need a way to indicate this as, so `imm` will hold the `=` token
+			// That way, it can be checked if `imm` is type operator (and it is the only non-null), then it is the mov form
+		} mType; // For M-type instructions
+
+		struct {
+			struct ASTNode* offset; // Can be a label or an expression
+		} biType; // For Bi-type instructions
+
+		struct {
+			struct ASTNode* xd;
+		} buType; // For Bu-type instructions
+
+		struct {
+			struct ASTNode* cond;
+			struct ASTNode* offset; // Can be a label or an expression
+		} bcType; // For Bc-type instructions
+
+		struct {
+			struct ASTNode* xd; // NULL for some
+			struct ASTNode* xs; // NULL for some
+		} sType; // For S-type instructions
+	} data;
 } InstrNode;
 
 typedef struct RegisterNode {
@@ -67,7 +113,14 @@ typedef enum {
 	NTYPE_INT8,
 	NTYPE_INT16,
 	NTYPE_INT32,
-	NTYPE_FLOAT
+	NTYPE_FLOAT,
+
+	// Number types for the immediates
+
+	NTYPE_INT24,
+	NTYPE_INT19,
+	NTYPE_INT9,
+	NTYPE_UINT14
 } NumType;
 
 typedef struct NumberNode {
@@ -76,6 +129,11 @@ typedef struct NumberNode {
 		int16_t int16Value;
 		int32_t int32Value;
 		float floatValue;
+
+		int32_t int24Value;
+		int32_t int19Value;
+		int16_t int9Value;
+		uint16_t uint14Value;
 	} value;
 	NumType type;
 } NumNode;
@@ -206,7 +264,7 @@ void freeNodeArray(Node** array);
 Node** nodeArrayInsert(Node** array, int* capacity, int* count, Node* node);
 
 
-InstrNode* initInstructionNode();
+InstrNode* initInstructionNode(enum Instructions instruction);
 void deinitInstructionNode(InstrNode* instrNode);
 
 

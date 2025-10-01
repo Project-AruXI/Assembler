@@ -99,20 +99,20 @@ enum Registers {
 	LR, XB, XZ, IR
 };
 
-static char* CONDS[] = {
-	"eq",
-	"ne",
-	"ov",
-	"nv",
-	"mi",
-	"pz",
-	"cc",
-	"cs",
-	"gt",
-	"ge",
-	"lt",
-	"le"
-};
+// static char* CONDS[] = {
+// 	"eq",
+// 	"ne",
+// 	"ov",
+// 	"nv",
+// 	"mi",
+// 	"pz",
+// 	"cc",
+// 	"cs",
+// 	"gt",
+// 	"ge",
+// 	"lt",
+// 	"le"
+// };
 
 
 static inline int indexOf(char* arr[], int size, const char* key);

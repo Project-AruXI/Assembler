@@ -397,11 +397,11 @@ Token* getNextToken(Lexer* lexer) {
 		case '#':
 			// '#' indicates an immediate value, needs to be followed by an integer
 			// otherwise, it is invalid
-			if (isalpha(lexer->peekedChar) || lexer->peekedChar == '-' || lexer->peekedChar == '+') {
+			if (isalnum(lexer->peekedChar) || lexer->peekedChar == '-' || lexer->peekedChar == '+') {
 				advance(lexer); // consume '#'
 				int startPos = lexer->currentPos;
 
-				while (isalpha(lexer->currentChar)) {
+				while (isalnum(lexer->currentChar)) {
 					advance(lexer);
 				}
 
