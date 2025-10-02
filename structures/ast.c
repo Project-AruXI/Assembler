@@ -236,7 +236,10 @@ void printAST(Node* root) {
 					// Bc-Type
 					if (instrNode->data.bcType.cond) {
 						rlog("    cond:");
-						printAST(instrNode->data.bcType.cond);
+						// Even though `cond` has its own node and datanode, it is set to NumNode
+						// NumNode is not aware of context (since most of its use is for normal numbers)
+						// Print the condition itself here without printing AST
+						rlog("      Condition: %s", CONDS[instrNode->data.bcType.cond->nodeData.number->value.int32Value]);						
 					}
 					if (instrNode->data.bcType.offset) {
 						rlog("    label:");
