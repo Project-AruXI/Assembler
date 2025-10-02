@@ -221,7 +221,7 @@ void printAST(Node* root) {
 				case UB: case CALL:
 					// Bi-Type
 					if (instrNode->data.biType.offset) {
-						rlog("    offset:");
+						rlog("    label:");
 						printAST(instrNode->data.biType.offset);
 					}
 					break;
@@ -239,7 +239,7 @@ void printAST(Node* root) {
 						printAST(instrNode->data.bcType.cond);
 					}
 					if (instrNode->data.bcType.offset) {
-						rlog("    offset:");
+						rlog("    label:");
 						printAST(instrNode->data.bcType.offset);
 					}
 					break;
@@ -293,7 +293,10 @@ void printAST(Node* root) {
 			break;
 		}
 		case ND_SYMB:
-			// Print symbol-specific details if needed
+			SymbNode* symbNode = root->nodeData.symbol;
+
+			rlog("  Symbol Table Index: %d", symbNode->symbTableIndex);
+			rlog("  Value: %u", symbNode->value);
 			break;
 		case ND_NUMBER:
 			NumNode* numNode = root->nodeData.number;

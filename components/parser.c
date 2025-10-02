@@ -127,6 +127,9 @@ static void parseIdentifier(Parser* parser) {
 	// Ensure it is an instruction
 
 	int index = indexOf(INSTRUCTIONS, sizeof(INSTRUCTIONS)/sizeof(INSTRUCTIONS[0]), idToken->lexeme);
+	// Checking for b{cond} will result in a false negative, so check for that specifically
+	// Just treat it as a normal branch, the condition checking will be handled in the handler
+	if (index == -1 && tolower(idToken->lexeme[0]) == 'b' && sdslen(idToken->lexeme) == 3) index = B;
 	if (index == -1) emitError(ERR_INVALID_INSTRUCTION, &linedata, "Unknown instruction: `%s`", idToken->lexeme);
 
 	idToken->type = TK_INSTRUCTION;

@@ -34,6 +34,8 @@ typedef struct SymbolEntry {
 
 	// In the case that the symbol is typed to be a specific struct/union. -1 for none
 	int structTypeIdx;
+
+	int symbTableIndex;
 } symb_entry_t;
 
 typedef struct SymbolTable {

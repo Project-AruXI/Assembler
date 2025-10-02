@@ -45,6 +45,8 @@ symb_entry_t* initSymbolEntry(const char* name, SYMBFLAGS flags, Node* expr, uin
 
 	entry->structTypeIdx = -1;
 
+	entry->symbTableIndex = -1; // Will be set when added to the symbol table
+
 	return entry;
 }
 
@@ -66,6 +68,7 @@ void addSymbolEntry(SymbolTable* table, symb_entry_t* entry) {
 		table->entries = (symb_entry_t**)realloc(table->entries, sizeof(symb_entry_t*) * table->capacity);
 	}
 	table->entries[table->size++] = entry;
+	entry->symbTableIndex = table->size - 1;
 }
 
 void addSymbolReference(symb_entry_t* entry, SString* source, int linenum) {
