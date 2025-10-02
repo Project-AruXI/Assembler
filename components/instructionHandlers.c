@@ -503,6 +503,61 @@ void handleBc(Parser* parser, Node* instrRoot) {
 	parser->currentTokenIndex++;
 }
 
-void handleS(Parser* parser, Node* instrRoot) {}
+void handleS(Parser* parser, Node* instrRoot) {
+	initScope("handleS");
 
-void handleF(Parser* parser, Node* instrRoot) {}
+	Token* instrToken = parser->tokens[parser->currentTokenIndex];
+	linedata_ctx linedata = {
+		.linenum = instrToken->linenum,
+		.source = ssGetString(instrToken->sstring)
+	};
+
+	log("Handling S instruction at line %d", instrToken->linenum);
+
+	// Instructions are in the form of `xd|xs` for some instructions
+	// ldir, ldcstr, resr use xd
+	// mvcstr uses xs
+	// The rest don't use operands
+
+	enum Instructions instrType = instrRoot->nodeData.instruction->instruction;
+
+	parser->currentTokenIndex++;
+	Token* nextToken = parser->tokens[parser->currentTokenIndex];
+
+	if (instrType < LDIR) {
+		// Operand-less instructions
+		if (nextToken->type != TK_NEWLINE) emitError(ERR_INVALID_SYNTAX, &linedata, "Expected newline after instruction, got `%s`.", nextToken->lexeme);
+		parser->currentTokenIndex++;
+		return;
+	}
+
+	if (nextToken->type != TK_REGISTER) emitError(ERR_INVALID_SYNTAX, &linedata, "Expected a register as the operand, got `%s`.", nextToken->lexeme);
+	int regNum = normalizeRegister(nextToken->lexeme);
+	if (regNum == -1) emitError(ERR_INVALID_REGISTER, &linedata, "Invalid register: `%s`.", nextToken->lexeme);
+
+	Node* xs_xdNode = initASTNode(AST_LEAF, ND_REGISTER, nextToken, instrRoot);
+	RegNode* xs_xdData = initRegisterNode(regNum);
+	setNodeData(xs_xdNode, xs_xdData, ND_REGISTER);
+
+	if (instrType == MVCSTR) instrRoot->nodeData.instruction->data.sType.xs = xs_xdNode;
+	else instrRoot->nodeData.instruction->data.sType.xd = xs_xdNode;
+
+	parser->currentTokenIndex++;
+	nextToken = parser->tokens[parser->currentTokenIndex];
+	if (nextToken->type != TK_NEWLINE) emitError(ERR_INVALID_SYNTAX, &linedata, "Expected newline after operand, got `%s`.", nextToken->lexeme);
+
+	parser->currentTokenIndex++;
+}
+
+void handleF(Parser* parser, Node* instrRoot) {
+	initScope("handleF");
+
+	Token* instrToken = parser->tokens[parser->currentTokenIndex];
+	linedata_ctx linedata = {
+		.linenum = instrToken->linenum,
+		.source = ssGetString(instrToken->sstring)
+	};
+
+	emitWarning(WARN_UNIMPLEMENTED, &linedata, "F-type instruction `%s` not yet implemented.", instrToken->lexeme);
+	// log("Handling F instruction at line %d", instrToken->linenum);
+}
