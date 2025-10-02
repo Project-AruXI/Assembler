@@ -406,7 +406,7 @@ Token* getNextToken(Lexer* lexer) {
 				}
 
 				int len = lexer->currentPos - startPos;
-				sds lexeme = sdsnewlen(&lexer->line[startPos], len);
+				sds lexeme = sdsnewlen(&lexer->line[startPos-1], len+1); // +1 to include '#'
 				if (!lexeme) emitError(ERR_MEM, NULL, "Failed to allocate memory for token lexeme.");
 
 				token->type = TK_IMM;

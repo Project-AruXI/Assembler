@@ -147,10 +147,122 @@ void printAST(Node* root) {
 	// Recursively print children based on node type
 	switch (root->nodeType) {
 		case ND_INSTRUCTION:
-			// Print instruction-specific details if needed
+			InstrNode* instrNode = root->nodeData.instruction;
+
+			rlog("  Instruction: %s", INSTRUCTIONS[instrNode->instruction]);
+			switch (instrNode->instruction) {
+				case ADD: case ADDS: case SUB: case SUBS:
+				case OR: case AND: case XOR: case NOT:
+				case LSL: case LSR: case ASR:
+				case CMP: case MV: case MVN:
+					// I/R-Type
+					if (instrNode->data.iType.xd) {
+						rlog("    xd:");
+						printAST(instrNode->data.iType.xd);
+					}
+					if (instrNode->data.iType.xs) {
+						rlog("    xs:");
+						printAST(instrNode->data.iType.xs);
+					}
+					if (instrNode->data.iType.imm) {
+						rlog("    imm:");
+						printAST(instrNode->data.iType.imm);
+					}
+					break;
+
+				case NOP:
+					// I-Type
+					if (instrNode->data.iType.xd) {
+						rlog("    xd:");
+						printAST(instrNode->data.iType.xd);
+					}
+					if (instrNode->data.iType.imm) {
+						rlog("    imm:");
+						printAST(instrNode->data.iType.imm);
+					}
+					break;
+
+				case MUL: case SMUL: case DIV: case SDIV:
+					// R-Type
+					if (instrNode->data.rType.xd) {
+						rlog("    xd:");
+						printAST(instrNode->data.rType.xd);
+					}
+					if (instrNode->data.rType.xs) {
+						rlog("    xs:");
+						printAST(instrNode->data.rType.xs);
+					}
+					if (instrNode->data.rType.xr) {
+						rlog("    xr:");
+						printAST(instrNode->data.rType.xr);
+					}
+					break;
+
+				case LD: case LDB: case LDBS: case LDBZ: case LDH: case LDHS: case LDHZ:
+				case STR: case STRB: case STRH:
+					// M-Type
+					if (instrNode->data.mType.xd) {
+						rlog("    xd:");
+						printAST(instrNode->data.mType.xd);
+					}
+					if (instrNode->data.mType.xs) {
+						rlog("    xs:");
+						printAST(instrNode->data.mType.xs);
+					}
+					if (instrNode->data.mType.xr) {
+						rlog("    xr:");
+						printAST(instrNode->data.mType.xr);
+					}
+					if (instrNode->data.mType.imm) {
+						rlog("    imm:");
+						printAST(instrNode->data.mType.imm);
+					}
+					break;
+				case UB: case CALL:
+					// Bi-Type
+					if (instrNode->data.biType.offset) {
+						rlog("    offset:");
+						printAST(instrNode->data.biType.offset);
+					}
+					break;
+				case UBR: case RET:
+					// Bu-Type
+					if (instrNode->data.buType.xd) {
+						rlog("    xd:");
+						printAST(instrNode->data.buType.xd);
+					}
+					break;
+				case B:
+					// Bc-Type
+					if (instrNode->data.bcType.cond) {
+						rlog("    cond:");
+						printAST(instrNode->data.bcType.cond);
+					}
+					if (instrNode->data.bcType.offset) {
+						rlog("    offset:");
+						printAST(instrNode->data.bcType.offset);
+					}
+					break;
+				case SYSCALL: case HLT: case SI: case DI: case ERET: case LDIR:
+				case MVCSTR: case LDCSTR: case RESR:
+					// S-Type
+					if (instrNode->data.sType.xd) {
+						rlog("    xd:");
+						printAST(instrNode->data.sType.xd);
+					}
+					if (instrNode->data.sType.xs) {
+						rlog("    xs:");
+						printAST(instrNode->data.sType.xs);
+					}
+					break;
+				default:
+					break;
+			}
 			break;
 		case ND_REGISTER:
-			// Print register-specific details if needed
+			RegNode* regNode = root->nodeData.reg;
+
+			rlog("  Register Number: %d", regNode->regNumber);
 			break;
 		case ND_DIRECTIVE: {
 			DirctvNode* dirNode = root->nodeData.directive;
@@ -184,7 +296,48 @@ void printAST(Node* root) {
 			// Print symbol-specific details if needed
 			break;
 		case ND_NUMBER:
-			// Print number-specific details if needed
+			NumNode* numNode = root->nodeData.number;
+
+			// Show all interpretation of the number (Decimal, hex)
+			switch (numNode->type) {
+				case NTYPE_INT8:
+					rlog("  Number Type: INT8");
+					rlog("  Decimal Value: %d", numNode->value.int8Value);
+					break;
+				case NTYPE_INT16:
+					rlog("  Number Type: INT16");
+					rlog("  Decimal Value: %d", numNode->value.int16Value);
+					break;
+				case NTYPE_INT24:
+					rlog("  Number Type: INT24");
+					rlog("  Decimal Value: %d", numNode->value.int24Value);
+					break;
+				case NTYPE_INT32:
+					rlog("  Number Type: INT32");
+					rlog("  Decimal Value: %d", numNode->value.int32Value);
+					break;
+				case NTYPE_INT19:
+					rlog("  Number Type: INT19");
+					rlog("  Decimal Value: %d", numNode->value.int19Value);
+					break;
+				case NTYPE_INT9:
+					rlog("  Number Type: INT9");
+					rlog("  Decimal Value: %d", numNode->value.int9Value);
+					break;
+				case NTYPE_UINT14:
+					rlog("  Number Type: UINT14");
+					rlog("  Decimal Value: %u", numNode->value.uint14Value);
+					break;
+				case NTYPE_FLOAT:
+					rlog("  Number Type: FLOAT");
+					rlog("  Decimal Value: %f", numNode->value.floatValue);
+					break;
+				default:
+					rlog("  Number Type: Unknown");
+					break;
+			}
+
+			rlog("  Hex Value: 0x%x", numNode->value.int32Value);
 			break;
 		case ND_STRING:
 			// Print string-specific details if needed
@@ -333,6 +486,8 @@ NumNode* initNumberNode(NumType type, int32_t intValue, float floatValue) {
 	NumNode* numNode = (NumNode*) malloc(sizeof(NumNode));
 	if (!numNode) emitError(ERR_MEM, NULL, "Failed to allocate memory for number node.");
 
+	numNode->value.int32Value = 0; // Default to 0
+
 	numNode->type = type;
 	switch (type) {
 		case NTYPE_INT8:
@@ -364,7 +519,7 @@ NumNode* initNumberNode(NumType type, int32_t intValue, float floatValue) {
 			break;
 	}
 
-	return NULL;
+	return numNode;
 }
 
 void deinitNumberNode(NumNode* numNode) {
