@@ -51,16 +51,18 @@ typedef enum {
 	TK_COLON_COLON, // ::
 	TK_STRING, // "[string]"
 	TK_DOT, // .
+	TK_COMMENT, // %
+	TK_LD_IMM, // =
 	TK_PLUS, // +
 	TK_MINUS, // -
 	TK_ASTERISK, // *
 	TK_DIVIDE, // /
-	TK_COMMENT, // %
-	TK_LD_IMM, // =
 	TK_BITWISE_AND, // &
 	TK_BITWISE_OR, // |
 	TK_BITWISE_XOR, // ^
 	TK_BITWISE_NOT, // ~
+	TK_BITWISE_SL, // <<
+	TK_BITWISE_SR, // >>
 	TK_LP, // @
 	TK_MACRO_ARG, // @[macro_arg]
 	TK_INTEGER, // [hex|bin|dec]

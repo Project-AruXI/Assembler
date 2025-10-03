@@ -176,6 +176,8 @@ void handleSet(Parser* parser, Node* directiveRoot) {
 
 	// Onwards to the expression
 	Node* exprRoot = parseExpression(parser);
+	exprRoot->astNodeType = AST_INTERNAL;
+	exprRoot->parent = directiveRoot;
 
 	// Assume currentTokenIndex was updated in parseExpression for now
 	nextToken = parser->tokens[parser->currentTokenIndex]; // This better be the newline

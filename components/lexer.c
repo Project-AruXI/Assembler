@@ -89,14 +89,23 @@ void lexLine(Lexer* lexer, const char* line) {
 			// So it is an internal error????
 			linedata_ctx linedata = {
 				.linenum = lexer->linenum,
-				.source = lexer->line
+				.source = sourceLine
 			};
 			emitError(ERR_INTERNAL, &linedata, "Unknown token: %s", tok->lexeme);
 		}
 
 		if (tok->type == TK_COMMENT) {
-			deleteToken(tok);
-			return;
+			// Convert comment to newline instead of deleting
+			// This is due to the fact that comments can appear after actual text
+			// But the newline (important for parser) would be omitted
+			// As a tradeoff, this would add unnecessary tokens when the line is just a comment line
+			// But the parser can handle consecutive newlines anyway
+			// HOWEVER, in the event that closing comments are added, like /* */
+			// Then it is imperative that the lexer would have to iterate through the comment until the end
+			tok->type = TK_NEWLINE;
+			// Even though this token will be marked as a newline, its lexeme remains '%'
+			// This will be kept just to see
+			break;
 		}
 
 		// addToken now needs the source line without the newline
@@ -466,6 +475,28 @@ Token* getNextToken(Lexer* lexer) {
 			token->lexeme = sdsnew("~");
 			advance(lexer);
 			return token;
+		case '<':
+			if (lexer->peekedChar == '<') {
+				token->type = TK_BITWISE_SL;
+				token->lexeme = sdsnew("<<");
+				advance(lexer);
+				advance(lexer);
+				return token;
+			} else {
+				emitError(ERR_INVALID_SYNTAX, &linedata, "Unexpected character: '%c'. Did you mean '<<'?", lexer->currentChar);
+			}
+			return token;
+		case '>':
+			if (lexer->peekedChar == '>') {
+				token->type = TK_BITWISE_SR;
+				token->lexeme = sdsnew(">>");
+				advance(lexer);
+				advance(lexer);
+				return token;
+			} else {
+				emitError(ERR_INVALID_SYNTAX, &linedata, "Unexpected character: '%c'. Did you mean '>>'?", lexer->currentChar);
+			}
+			return token;
 		case '@':
 			advance(lexer);
 
@@ -542,8 +573,38 @@ Token* getNextToken(Lexer* lexer) {
 			} else if (isdigit(lexer->currentChar)) {
 				// Number (integer or float)
 				int startPos = lexer->currentPos;
-				while (isdigit(lexer->currentChar)) {
-					advance(lexer);
+
+				// Check for hexadecimal
+				if (lexer->currentChar == '0' && (lexer->peekedChar == 'x' || lexer->peekedChar == 'X')) {
+					advance(lexer); // consume '0'
+					advance(lexer); // consume 'x'|'X'
+
+					int hexStart = lexer->currentPos;
+					while (isxdigit(lexer->currentChar)) {
+						advance(lexer);
+					}
+
+					// It can be the case that there is a non-hex character (outside of a-f and 0-9)
+					//   .ie 0xagg, it needs to be checked
+					if (isalpha(lexer->currentChar) || lexer->currentChar == '_') {
+						emitError(ERR_INVALID_SYNTAX, &linedata, "Invalid hexadecimal literal: unexpected character '%c' after hex digits.", lexer->currentChar);
+					}
+
+					int hexLen = lexer->currentPos - hexStart;
+					if (hexLen == 0) emitError(ERR_INVALID_SYNTAX, &linedata, "Invalid hexadecimal literal: missing digits after '0x'.");	
+
+					int len = lexer->currentPos - startPos;
+					sds lexeme = sdsnewlen(&lexer->line[startPos], len);
+					if (!lexeme) emitError(ERR_MEM, NULL, "Failed to allocate memory for token lexeme.");
+
+					token->type = TK_INTEGER;
+					token->lexeme = lexeme;
+
+					return token;
+				} else {
+					while (isdigit(lexer->currentChar)) {
+						advance(lexer);
+					}
 				}
 				if (lexer->currentChar == '.' && (lexer->prevToken && lexer->prevToken->type != TK_COLON)) {
 					// Floating point number
@@ -632,6 +693,8 @@ void printToken(Token* token) {
 		case TK_BITWISE_OR: typeStr = "TK_BITWISE_OR"; break;
 		case TK_BITWISE_XOR: typeStr = "TK_BITWISE_XOR"; break;
 		case TK_BITWISE_NOT: typeStr = "TK_BITWISE_NOT"; break;
+		case TK_BITWISE_SL: typeStr = "TK_BITWISE_SL"; break;
+		case TK_BITWISE_SR: typeStr = "TK_BITWISE_SR"; break;
 		case TK_LP: typeStr = "TK_LP"; break;
 		case TK_MACRO_ARG: typeStr = "TK_MACRO_ARG"; break;
 		case TK_INTEGER: typeStr = "TK_INTEGER"; break;
@@ -650,9 +713,7 @@ void printToken(Token* token) {
 }
 
 Token* getToken(Lexer* lexer, int index) {
-	if (index < 0 || index >= lexer->tokenCount) {
-		return NULL;
-	}
+	if (index < 0 || index >= lexer->tokenCount) return NULL;
 	return lexer->tokens[index];
 }
 

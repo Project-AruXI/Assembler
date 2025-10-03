@@ -4,6 +4,7 @@
 #include "ast.h"
 #include "diagnostics.h"
 #include "SymbolTable.h"
+#include "expr.h"
 
 
 static int normalizeRegister(const char* regStr) {
@@ -126,23 +127,27 @@ void handleIR(Parser* parser, Node* instrRoot) {
 	// - A register followed by a newline (definity R-type with two operands)
 	// - A register followed by an immediate (definitive I-type)
 	
-	if (nextToken->type == TK_IMM) {
+	if (nextToken->type == TK_IMM || nextToken->type == TK_INTEGER || nextToken->type == TK_IDENTIFIER || 
+			nextToken->type == TK_LPAREN || nextToken->type == TK_PLUS || nextToken->type == TK_MINUS || nextToken->type == TK_RPAREN || 
+			nextToken->type == TK_LP) {
+		Node* immExprRoot = parseExpression(parser);
+
 		// Immediate, so I-type with two operands
-		Node* immNode = initASTNode(AST_LEAF, ND_NUMBER, nextToken, instrRoot);
-		NumNode* immData = initNumberNode(NTYPE_UINT14, atoi(nextToken->lexeme + 1), 0.0);
-		setNodeData(immNode, immData, ND_NUMBER);
+		immExprRoot->parent = instrRoot;
+		// Node* immNode = initASTNode(AST_LEAF, ND_NUMBER, nextToken, instrRoot);
+		// NumNode* immData = initNumberNode(NTYPE_UINT14, atoi(nextToken->lexeme + 1), 0.0);
+		// setNodeData(immNode, immData, ND_NUMBER);
 
 		// Set the instruction data
 		if (instrType == CMP) {
 			// Temporarily directly set, need to use a function later
 			instrRoot->nodeData.instruction->data.iType.xs = xsNode;
-			instrRoot->nodeData.instruction->data.iType.imm = immNode;
+			instrRoot->nodeData.instruction->data.iType.imm = immExprRoot;
 		} else {
 			instrRoot->nodeData.instruction->data.iType.xd = xdNode;
-			instrRoot->nodeData.instruction->data.iType.imm = immNode;
+			instrRoot->nodeData.instruction->data.iType.imm = immExprRoot;
 		}
 
-		parser->currentTokenIndex++;
 		nextToken = parser->tokens[parser->currentTokenIndex];
 		if (nextToken->type != TK_NEWLINE) emitError(ERR_INVALID_SYNTAX, &linedata, "Expected newline after immediate operand of `%s` instruction, got `%s`.", instrToken->lexeme, nextToken->lexeme);
 		
@@ -207,16 +212,18 @@ void handleIR(Parser* parser, Node* instrRoot) {
 
 				return;
 			} else if (nextToken->type == TK_IMM) {
+				Node* immExprRoot = parseExpression(parser);
+
 				// Definitive I-type with three operands
-				Node* immNode = initASTNode(AST_LEAF, ND_NUMBER, nextToken, instrRoot);
-				NumNode* immData = initNumberNode(NTYPE_UINT14, atoi(nextToken->lexeme + 1), 0.0);
-				setNodeData(immNode, immData, ND_NUMBER);
+				immExprRoot->parent = instrRoot;
+				// Node* immNode = initASTNode(AST_LEAF, ND_NUMBER, nextToken, instrRoot);
+				// NumNode* immData = initNumberNode(NTYPE_UINT14, atoi(nextToken->lexeme + 1), 0.0);
+				// setNodeData(immNode, immData, ND_NUMBER);
 
 				instrRoot->nodeData.instruction->data.iType.xd = xdNode;
 				instrRoot->nodeData.instruction->data.iType.xs = xsNode;
-				instrRoot->nodeData.instruction->data.iType.imm = immNode;
+				instrRoot->nodeData.instruction->data.iType.imm = immExprRoot;
 
-				parser->currentTokenIndex++;
 				nextToken = parser->tokens[parser->currentTokenIndex];
 				if (nextToken->type != TK_NEWLINE) emitError(ERR_INVALID_SYNTAX, &linedata, "Expected newline after immediate operand of `%s` instruction, got `%s`.", instrToken->lexeme, nextToken->lexeme);
 				parser->currentTokenIndex++; // Consume the newline

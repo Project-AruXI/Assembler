@@ -55,6 +55,7 @@ void setNodeData(Node* node, void* nodeData, node_t nodeType) {
 }
 
 void freeAST(Node* root) {
+	initScope("freeAST");
 	switch (root->nodeType) {
 		case ND_INSTRUCTION:
 			deinitInstructionNode(root->nodeData.instruction);
@@ -349,7 +350,9 @@ void printAST(Node* root) {
 			// Print string-specific details if needed
 			break;
 		case ND_OPERATOR:
-			// Print operator-specific details if needed
+			// TEMP
+			rlog("  Left/operand: %p", root->nodeData.operator->data.binary.left);
+			rlog("  Right: %p", root->nodeData.operator->data.binary.right);
 			break;
 		case ND_TYPE:
 			TypeNode* typeNode = root->nodeData.type;
@@ -410,6 +413,7 @@ InstrNode* initInstructionNode(enum Instructions instruction) {
 }
 
 void deinitInstructionNode(InstrNode* instrNode) {
+	// free(instrNode);
 }
 
 RegNode* initRegisterNode(int regNumber) {
@@ -553,7 +557,13 @@ void deinitStringNode(StrNode* strNode) {
 
 
 OpNode* initOperatorNode() {
-	return NULL;
+	OpNode* opNode = (OpNode*) malloc(sizeof(OpNode));
+	if (!opNode) emitError(ERR_MEM, NULL, "Failed to allocate memory for operator node.");
+
+	opNode->data.binary.left = NULL;
+	opNode->data.binary.right = NULL;
+
+	return opNode;
 }
 
 void deinitOperatorNode(OpNode* opNode) {
@@ -563,6 +573,16 @@ void deinitOperatorNode(OpNode* opNode) {
 	if (opNode->data.binary.right) freeAST(opNode->data.binary.right);
 	free(opNode);
 }
+
+void setUnaryOperand(OpNode* opNode, Node* operand) {
+	opNode->data.unary.operand = operand;
+}
+
+void setBinaryOperands(OpNode* opNode, Node* left, Node* right) {
+	opNode->data.binary.left = left;
+	opNode->data.binary.right = right;
+}
+
 
 TypeNode* initTypeNode() {
 	TypeNode* typeNode = (TypeNode*) malloc(sizeof(TypeNode));

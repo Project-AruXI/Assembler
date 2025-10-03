@@ -115,6 +115,7 @@ typedef enum {
 	NTYPE_INT32,
 	NTYPE_FLOAT,
 
+	NTYPE_UINT32,
 	// Number types for the immediates
 
 	NTYPE_INT24,
@@ -125,10 +126,14 @@ typedef enum {
 
 typedef struct NumberNode {
 	union {
+		// Standard number types
+
 		int8_t int8Value;
 		int16_t int16Value;
 		int32_t int32Value;
 		float floatValue;
+
+		// Immediate-specific types used in instructions
 
 		int32_t int24Value;
 		int32_t int19Value;
@@ -264,16 +269,15 @@ void freeNodeArray(Node** array);
 Node** nodeArrayInsert(Node** array, int* capacity, int* count, Node* node);
 
 
+
 InstrNode* initInstructionNode(enum Instructions instruction);
 void deinitInstructionNode(InstrNode* instrNode);
 
+// Add functions to set the various operands, number of functions depending on different instruction types
 
 
-
-RegNode* initRegisterNode();
+RegNode* initRegisterNode(int regNumber);
 void deinitRegisterNode(RegNode* regNode);
-
-
 
 
 DirctvNode* initDirectiveNode();
@@ -309,24 +313,19 @@ SymbNode* initSymbolNode(int symbTableIndex, uint32_t value);
 void deinitSymbolNode(SymbNode* symbNode);
 
 
-
-
 NumNode* initNumberNode(NumType type, int32_t intValue, float floatValue);
 void deinitNumberNode(NumNode* numNode);
-
-
 
 
 StrNode* initStringNode(sds value, int length);
 void deinitStringNode(StrNode* strNode);
 
 
-
-
 OpNode* initOperatorNode();
 void deinitOperatorNode(OpNode* opNode);
 
-
+void setUnaryOperand(OpNode* opNode, Node* operand);
+void setBinaryOperands(OpNode* opNode, Node* left, Node* right);
 
 
 TypeNode* initTypeNode();

@@ -44,6 +44,7 @@ static bool isRightAssociative(tokenType type) {
 
 // Parse a primary expression: number, symbol, @, (expr)
 static Node* parsePrimary(Parser* parser) {
+	initScope("parsePrimary");
 	Token* token = parser->tokens[parser->currentTokenIndex];
 	Node* node = NULL;
 
@@ -104,21 +105,23 @@ static Node* parsePrimary(Parser* parser) {
 	return node;
 }
 
-// Parse a unary expression: -expr, ~expr, +expr, @expr
+// Parse a unary expression: -expr, ~expr, +expr
 static Node* parseUnary(Parser* parser) {
+	initScope("parseUnary");
+
 	Token* token = parser->tokens[parser->currentTokenIndex];
 	switch (token->type) {
 		case TK_MINUS:
 		case TK_PLUS:
 		case TK_BITWISE_NOT:
-		case TK_LP:
 			parser->currentTokenIndex++;
 			// Create a node for the unary operator
 			OpNode* opData = initOperatorNode();
 			Node* opNode = initASTNode(AST_INTERNAL, ND_OPERATOR, token, NULL);
 			Node* operand = parseUnary(parser);
-			setNodeData(opNode, operand, ND_OPERATOR);
+			setNodeData(opNode, opData, ND_OPERATOR);
 			setUnaryOperand(opData, operand);
+
 			return opNode;
 		default:
 			return parsePrimary(parser);
@@ -127,6 +130,8 @@ static Node* parseUnary(Parser* parser) {
 
 // Pratt/precedence climbing parser for binary operators
 static Node* parseBinary(Parser* parser, int minPrec) {
+	initScope("parseBinary");
+
 	Node* left = parseUnary(parser);
 	while (true) {
 		Token* token = parser->tokens[parser->currentTokenIndex];
