@@ -50,10 +50,23 @@ static Node* parsePrimary(Parser* parser) {
 
 	switch (token->type) {
 		case TK_IMM: // #number (immediate)
+			int n = 0;
+			if (token->lexeme[1] == '0' && (token->lexeme[2] == 'x' || token->lexeme[2] == 'X')) {
+				n = (int) strtol(token->lexeme + 1, NULL, 0); // base 0 auto-detects 0x as hex
+			} else n = atoi(token->lexeme + 1); // skip the '#'
 		case TK_INTEGER:
+			if (token->lexeme[0] == '0' && (token->lexeme[1] == 'x' || token->lexeme[1] == 'X')) {
+				n = (int) strtol(token->lexeme, NULL, 0); // base 0 auto-detects 0x as hex
+			} else n = atoi(token->lexeme);
+
+			node = initASTNode(AST_LEAF, ND_NUMBER, token, NULL);
+			NumNode* numData = initNumberNode(NTYPE_INT32, n, 0.0f);
+			setNodeData(node, numData, ND_NUMBER);
+			parser->currentTokenIndex++;
+			break;
 		case TK_FLOAT:
 			node = initASTNode(AST_LEAF, ND_NUMBER, token, NULL);
-			NumNode* numData = initNumberNode(NTYPE_INT32, 0, 0.0f);
+			numData = initNumberNode(NTYPE_FLOAT, 0, atof(token->lexeme));
 			setNodeData(node, numData, ND_NUMBER);
 			parser->currentTokenIndex++;
 			break;
@@ -119,6 +132,7 @@ static Node* parseUnary(Parser* parser) {
 			OpNode* opData = initOperatorNode();
 			Node* opNode = initASTNode(AST_INTERNAL, ND_OPERATOR, token, NULL);
 			Node* operand = parseUnary(parser);
+			operand->parent = opNode;
 			setNodeData(opNode, opData, ND_OPERATOR);
 			setUnaryOperand(opData, operand);
 
@@ -145,6 +159,8 @@ static Node* parseBinary(Parser* parser, int minPrec) {
 		OpNode* opData = initOperatorNode();
 		setNodeData(opNode, opData, ND_OPERATOR);
 		setBinaryOperands(opData, left, right);
+		left->parent = opNode;
+		right->parent = opNode;
 		left = opNode;
 	}
 	return left;
