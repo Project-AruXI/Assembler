@@ -43,11 +43,11 @@ typedef struct InstructionNode {
 		} rType; // For R-type instructions
 
 		struct {
-			struct ASTNode* xd;
-			struct ASTNode* xs;
-			struct ASTNode* xr;
-			struct ASTNode* imm;
-			// When all but `imm` is null, it signifies the LD immediate form
+			struct ASTNode* xds; // The destination (or source for STR*) register
+			struct ASTNode* xb; // The base register
+			struct ASTNode* xi; // The index register
+			struct ASTNode* imm; // The immediate
+			// When all but `imm` and `xd` is null, it signifies the LD immediate form
 			// This form allows `=imm` or `imm` where `=imm` signifies to simply move the big immediate into the register
 			//  while `imm` signifies to load from the address of the immediate value
 			// Need a way to indicate this as, so `imm` will hold the `=` token
@@ -185,7 +185,7 @@ typedef struct TypeNode {
 		TYPE_STRUCT,
 		TYPE_UNION,
 		TYPE_PTR
-	};
+	} type;
 
 	struct ASTNode* child;
 

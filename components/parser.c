@@ -134,6 +134,13 @@ static void parseIdentifier(Parser* parser) {
 
 	idToken->type = TK_INSTRUCTION;
 
+	// Make sure current section is either text, evt, or ivt
+	if (parser->sectionTable->activeSection != TEXT_SECT_N && 
+			parser->sectionTable->activeSection != EVT_SECT_N &&
+			parser->sectionTable->activeSection != IVT_SECT_N) {
+		emitError(ERR_INSTR_NOT_IN_TEXT, &linedata, "Instruction `%s` found outside of .text, .evt, or .ivt section.", idToken->lexeme);
+	}
+
 	enum Instructions instruction = (enum Instructions) index;
 	log("Parsing instruction: `%s`. Set type to `%s`", idToken->lexeme, INSTRUCTIONS[instruction]);
 

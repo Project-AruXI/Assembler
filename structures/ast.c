@@ -202,17 +202,17 @@ void printAST(Node* root) {
 				case LD: case LDB: case LDBS: case LDBZ: case LDH: case LDHS: case LDHZ:
 				case STR: case STRB: case STRH:
 					// M-Type
-					if (instrNode->data.mType.xd) {
-						rlog("    xd:");
-						printAST(instrNode->data.mType.xd);
+					if (instrNode->data.mType.xds) {
+						rlog("    xds:");
+						printAST(instrNode->data.mType.xds);
 					}
-					if (instrNode->data.mType.xs) {
-						rlog("    xs:");
-						printAST(instrNode->data.mType.xs);
+					if (instrNode->data.mType.xb) {
+						rlog("    xb:");
+						printAST(instrNode->data.mType.xb);
 					}
-					if (instrNode->data.mType.xr) {
-						rlog("    xr:");
-						printAST(instrNode->data.mType.xr);
+					if (instrNode->data.mType.xi) {
+						rlog("    xi:");
+						printAST(instrNode->data.mType.xi);
 					}
 					if (instrNode->data.mType.imm) {
 						rlog("    imm:");
@@ -404,9 +404,9 @@ InstrNode* initInstructionNode(enum Instructions instruction) {
 
 	// Need to null all of `data`
 	// However, since it is a union of various structs, need to use the largest struct to null
-	instrNode->data.mType.xd = NULL;
-	instrNode->data.mType.xs = NULL;
-	instrNode->data.mType.xr = NULL;
+	instrNode->data.mType.xds = NULL;
+	instrNode->data.mType.xb = NULL;
+	instrNode->data.mType.xi = NULL;
 	instrNode->data.mType.imm = NULL;
 
 	return instrNode;

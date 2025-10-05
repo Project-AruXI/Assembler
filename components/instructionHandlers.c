@@ -328,7 +328,269 @@ void handleR(Parser* parser, Node* instrRoot) {
 	parser->currentTokenIndex++;
 }
 
-void handleM(Parser* parser, Node* instrRoot) {}
+static Node* parseMemberAccess(Parser* parser) {
+	initScope("parseMemberAccess");
+
+	// This function assumes that the current token is a TK_IDENTIFIER
+	// It will parse the member access/dereference chain and return the root of the expression tree
+	// The tree will be in the form of:
+	// symbol -|
+	//         |- . -|
+	//               |- member (TK_IDENTIFIER)
+	//               |- . -|
+	//                     |- member (TK_IDENTIFIER)
+	//                     |- -> -|
+	//                           |- member (TK_IDENTIFIER)
+	//                           |- ... and so on
+
+	Token* symbolToken = parser->tokens[parser->currentTokenIndex];
+	linedata_ctx linedata = {
+		.linenum = symbolToken->linenum,
+		.source = ssGetString(symbolToken->sstring)
+	};
+
+	// Need to get the symbol itself and the type
+	symb_entry_t* symbol = getSymbolEntry(parser->symbolTable, symbolToken->lexeme);
+	int subType = GET_SUB_TYPE(symbol->flags);
+
+	if (subType == T_PTR && !FEATURE_ENABLED(parser->config, FEATURE_PTR_DEREF)) {
+		emitError(ERR_NOT_ALLOWED, &linedata, "Pointer dereference is not allowed. Enable the feature to use it.");
+	}
+	if ((subType == T_STRUCT || subType == T_ARR) && !FEATURE_ENABLED(parser->config, FEATURE_FIELD_ACCESS)) {
+		emitError(ERR_NOT_ALLOWED, &linedata, "Field access is not allowed. Enable the feature to use it.");
+	}
+
+	
+}
+
+void handleM(Parser* parser, Node* instrRoot) {
+	initScope("handleM");
+
+	Token* instrToken = parser->tokens[parser->currentTokenIndex];
+	linedata_ctx linedata = {
+		.linenum = instrToken->linenum,
+		.source = ssGetString(instrToken->sstring)
+	};
+
+	log("Handling M instruction at line %d", instrToken->linenum);
+
+	// M-type instructions are the most tricky as it can vary
+	// In general, they have the following forms:
+	// - mem-op reg, [reg]
+	// - mem-op reg, [reg, imm]
+	// - mem-op reg, [reg], reg
+	// However, `ld` has two more forms:
+	// - ld reg, =imm  <- Basically just a `mv` but on a large number since `mv` only supports 14-bit immediates
+	// - ld reg, imm <- Load from the address
+	// Expressions can be used where `imm` appears
+	// Additionally, if the advanced typing system is enabled, doing member access/dereference is allowed but only
+	//   for `ld reg, imm`, for example `ld x0, mySymbol.member`. `mySymbol.member` (if valid) will result in a number that is to act as an addr
+	// Also, for `ld reg, imm`, if the immediate/address is close enough to the LP, it does an IR-relative load
+
+	enum Instructions instrType = instrRoot->nodeData.instruction->instruction;
+
+	/**
+	 * Trees:
+	 * op reg0, [reg1]
+	 * op -|
+	 * 	   |- reg0 (xds)
+	 * 	   |- reg1 (xb)
+	 *     |- NULL (xi)
+	 * 	   |- NULL (imm)
+	 * 
+	 * op reg0, [reg1, imm]
+	 * op -|
+	 *     |- reg0 (xds)
+	 * 	   |- reg1 (xb)
+	 * 	   |- NULL (xi)
+	 * 	   |- imm (imm) -|
+	 * 						       |- ... (expression tree)
+	 * 
+	 * op reg0, [reg1], reg2
+	 * op -|
+	 * 	   |- reg0 (xds)
+	 * 	   |- reg1 (xb)
+	 * 	   |- reg2 (xi)
+	 * 	   |- NULL (imm)
+	 * 
+	 * ld reg, imm
+	 * ld -|
+	 *     |- reg (xds)
+	 * 	   |- NULL (xb)
+	 * 	   |- NULL (xi)
+	 * 	   |- imm (imm) -|
+	 * 						       |- ... (expression tree)
+	 * 
+	 * ld reg, =imm
+	 * ld -|
+	 *     |- reg (xds)
+	 * 	   |- NULL (xb)
+	 * 	   |- NULL (xi)
+	 * 	   |- = (imm) -|
+	 * 						     |- imm -|
+	 * 						             |- ... (expression tree)
+	 */
+
+	parser->currentTokenIndex++;
+	Token* nextToken = parser->tokens[parser->currentTokenIndex];
+	if (nextToken->type != TK_REGISTER) emitError(ERR_INVALID_SYNTAX, &linedata, "Expected a register, got `%s`.", nextToken->lexeme);
+	int regNum = normalizeRegister(nextToken->lexeme);
+	if (regNum == -1) emitError(ERR_INVALID_REGISTER, &linedata, "Invalid register: `%s`.", nextToken->lexeme);
+
+	Node* xdsNode = initASTNode(AST_LEAF, ND_REGISTER, nextToken, instrRoot);
+	RegNode* xdsData = initRegisterNode(regNum);
+	setNodeData(xdsNode, xdsData, ND_REGISTER);
+	instrRoot->nodeData.instruction->data.mType.xds = xdsNode;
+
+	parser->currentTokenIndex++;
+	nextToken = parser->tokens[parser->currentTokenIndex];
+	if (nextToken->type != TK_COMMA) emitError(ERR_INVALID_SYNTAX, &linedata, "Expected `,`, got `%s`.", nextToken->lexeme);
+
+	// Now this is where some divergence happens
+	// The acceptable next tokens are:
+	// - `[` TK_LBRACKET
+	// - TK_IMM (#...), TK_SYMBOL, TK_INTEGER, TK_LPAREN, TK_PLUS, TK_MINUS, TK_LP (for ld reg, imm)
+	// - `=` TK_LD_IMM (for ld reg, =imm)
+
+	parser->currentTokenIndex++;
+	nextToken = parser->tokens[parser->currentTokenIndex];
+
+	trace("Next token after first operand and comma: `%s`; type: %d", nextToken->lexeme, nextToken->type);
+
+	if (nextToken->type == TK_LSQBRACKET) {
+		// This means it is one of the first three forms (mem-op reg, [reg]; mem-op reg, [reg, imm]; mem-op reg, [reg], reg)
+		// Going to get base register
+		parser->currentTokenIndex++;
+		nextToken = parser->tokens[parser->currentTokenIndex];
+		if (nextToken->type != TK_REGISTER) emitError(ERR_INVALID_SYNTAX, &linedata, "Expected a register, got `%s`.", nextToken->lexeme);
+		regNum = normalizeRegister(nextToken->lexeme);
+		if (regNum == -1) emitError(ERR_INVALID_REGISTER, &linedata, "Invalid register: `%s`.", nextToken->lexeme);
+
+		Node* xbNode = initASTNode(AST_LEAF, ND_REGISTER, nextToken, instrRoot);
+		RegNode* xbData = initRegisterNode(regNum);
+		setNodeData(xbNode, xbData, ND_REGISTER);
+		instrRoot->nodeData.instruction->data.mType.xb = xbNode;
+
+		parser->currentTokenIndex++;
+		nextToken = parser->tokens[parser->currentTokenIndex];
+		if (nextToken->type == TK_COMMA) {
+			// mem-op reg, [reg, imm]
+			parser->currentTokenIndex++;
+			nextToken = parser->tokens[parser->currentTokenIndex];
+
+			Node* immExprRoot = parseExpression(parser);
+
+			nextToken = parser->tokens[parser->currentTokenIndex];
+			if (nextToken->type != TK_RSQBRACKET) emitError(ERR_INVALID_SYNTAX, &linedata, "Expected `]`, got `%s`.", nextToken->lexeme);
+
+			instrRoot->nodeData.instruction->data.mType.xi = NULL;
+			instrRoot->nodeData.instruction->data.mType.imm = immExprRoot;
+
+			parser->currentTokenIndex++;
+			nextToken = parser->tokens[parser->currentTokenIndex];
+			if (nextToken->type != TK_NEWLINE) emitError(ERR_INVALID_SYNTAX, &linedata, "Expected newline after `]`, got `%s`.", nextToken->lexeme);
+			parser->currentTokenIndex++; // Consume the newline
+			return;
+		} else if (nextToken->type == TK_RSQBRACKET) {
+			// mem-op reg, [reg] or mem-op reg, [reg], reg
+			parser->currentTokenIndex++;
+			nextToken = parser->tokens[parser->currentTokenIndex];
+			if (nextToken->type == TK_COMMA) {
+				// mem-op reg, [reg], reg
+				parser->currentTokenIndex++;
+				nextToken = parser->tokens[parser->currentTokenIndex];
+				if (nextToken->type != TK_REGISTER) emitError(ERR_INVALID_SYNTAX, &linedata, "Expected a register as the index register, got `%s`.", nextToken->lexeme);
+				regNum = normalizeRegister(nextToken->lexeme);
+				if (regNum == -1) emitError(ERR_INVALID_REGISTER, &linedata, "Invalid register: `%s`.", nextToken->lexeme);
+
+				Node* xiNode = initASTNode(AST_LEAF, ND_REGISTER, nextToken, instrRoot);
+				RegNode* xiData = initRegisterNode(regNum);
+				setNodeData(xiNode, xiData, ND_REGISTER);
+				instrRoot->nodeData.instruction->data.mType.xi = xiNode;
+				instrRoot->nodeData.instruction->data.mType.imm = NULL;
+
+				parser->currentTokenIndex++;
+				nextToken = parser->tokens[parser->currentTokenIndex];
+				if (nextToken->type != TK_NEWLINE) emitError(ERR_INVALID_SYNTAX, &linedata, "Expected newline after index register, got `%s`.", nextToken->lexeme);
+				parser->currentTokenIndex++; // Consume the newline
+				return;
+			} else if (nextToken->type == TK_NEWLINE) {
+				// mem-op reg, [reg]
+				instrRoot->nodeData.instruction->data.mType.xi = NULL;
+				instrRoot->nodeData.instruction->data.mType.imm = NULL;
+				parser->currentTokenIndex++; // Consume the newline
+				return;
+			}
+			emitError(ERR_INVALID_SYNTAX, &linedata, "Expected `,` or newline after `]`, got `%s`.", nextToken->lexeme);
+		}
+		emitError(ERR_INVALID_SYNTAX, &linedata, "Expected `,` or `]`, got `%s`.", nextToken->lexeme);
+	} else if (nextToken->type == TK_IMM || nextToken->type == TK_INTEGER || nextToken->type == TK_IDENTIFIER || 
+			nextToken->type == TK_LPAREN || nextToken->type == TK_PLUS || nextToken->type == TK_MINUS || nextToken->type == TK_LP) {
+		// Need to make sure it is `ld`
+		if (instrType != LD) emitError(ERR_INVALID_SYNTAX, &linedata, "Expected `[`, got `%s`. Only `ld` instruction supports loading from an address.", nextToken->lexeme);
+
+		// Remember this is where the advanced typing system can go
+		// It start with the symbol, then the access/dereference chain
+		// However, parseExpression cannot handle that, nor it knows what to do
+		// Handle it here
+		Node* immExprRoot = NULL;
+
+		// Need to make sure that the member access follows, if not, it is just a normal symbol (ie by itself or in an expression)
+		Token* peekedToken = parser->tokens[parser->currentTokenIndex + 1];
+		if (nextToken->type == TK_IDENTIFIER && peekedToken->type == TK_DOT) {
+			// Leave the accessing to a function in order to keep things clear
+			// Also make sure the advanced typing system is enabled
+			// However, there is pointer dereference and field access
+			// Since this does not know the exact system, just check if either is enabled
+			if (!FEATURE_ENABLED(parser->config, FEATURE_PTR_DEREF) && !FEATURE_ENABLED(parser->config, FEATURE_FIELD_ACCESS)) {
+				emitError(ERR_INVALID_SYNTAX, &linedata, "Member access/dereference is not enabled.");
+			}
+
+			immExprRoot = parseMemberAccess(parser);
+		} else immExprRoot = parseExpression(parser);
+
+		// Since `imm` is most likely 32 bits, it doesn't fit in the instruction
+		// This means to either to IR-relative or split
+		// The expression will not be evaluated until later so until then it will be known
+		// For know, leave as is, and when it is evaluated, figure out if it can be IR-relative or needs to be split
+
+		instrRoot->nodeData.instruction->data.mType.xb = NULL;
+		instrRoot->nodeData.instruction->data.mType.xi = NULL;
+		instrRoot->nodeData.instruction->data.mType.imm = immExprRoot;
+
+		immExprRoot->parent = instrRoot;
+
+		nextToken = parser->tokens[parser->currentTokenIndex];
+		if (nextToken->type != TK_NEWLINE) emitError(ERR_INVALID_SYNTAX, &linedata, "Expected newline after immediate expression, got `%s`.", nextToken->lexeme);
+		parser->currentTokenIndex++; // Consume the newline
+
+		return;
+	} else if (nextToken->type == TK_LD_IMM) {
+		// ld reg, =imm
+
+		Node* literalNode = initASTNode(AST_INTERNAL, ND_OPERATOR, nextToken, instrRoot);
+		OpNode* literalData = initOperatorNode();
+		setNodeData(literalNode, literalData, ND_OPERATOR);
+		instrRoot->nodeData.instruction->data.mType.imm = literalNode;
+		
+		parser->currentTokenIndex++;
+		nextToken = parser->tokens[parser->currentTokenIndex];
+		// Need to check first????
+		Node* immExprRoot = parseExpression(parser);
+		immExprRoot->parent = literalNode;
+
+		instrRoot->nodeData.instruction->data.mType.xb = NULL;
+		instrRoot->nodeData.instruction->data.mType.xi = NULL;
+		instrRoot->nodeData.instruction->data.mType.imm = literalNode;
+
+		nextToken = parser->tokens[parser->currentTokenIndex];
+		if (nextToken->type != TK_NEWLINE) emitError(ERR_INVALID_SYNTAX, &linedata, "Expected newline after immediate expression, got `%s`.", nextToken->lexeme);
+		parser->currentTokenIndex++; // Consume the newline
+
+		return;
+	}
+	emitError(ERR_INVALID_SYNTAX, &linedata, "Expected `[`, `=`, or an immediate expression as the second operand, got `%s`.", nextToken->lexeme);
+}
 
 void handleBi(Parser* parser, Node* instrRoot) {
 	initScope("handleBi");
