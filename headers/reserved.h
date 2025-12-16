@@ -65,6 +65,7 @@ static char* INSTRUCTIONS[] = {
 #define Bc_TYPE_IDX 33
 #define S_TYPE_IDX 34
 #define F_TYPE_IDX 43
+#define END_TYPE_IDX 43
 
 enum Instructions {
 	ADD, ADDS, SUB, SUBS,

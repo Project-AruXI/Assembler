@@ -149,6 +149,13 @@ static void parseIdentifier(Parser* parser) {
 
 	// Go with same system as the old/legacy assembler
 
+	if (instruction >= END_TYPE_IDX) emitError(ERR_INTERNAL, &linedata, "Instruction `%s` could not be categorized into a type.", idToken->lexeme);
+
+	// In the case that the instruction is ld immediate/move form, the handler may need to add new ASTs for the decomposition
+	// By placing the adding of the AST here, the decomposed ASTs will follow it
+	// That allows for the codegen to detect the ld imm/move form and read the following ASTs as part of the instruction
+	addAst(parser, instructionRoot);
+
 	if (instruction >= IR_TYPE_IDX && instruction < I_TYPE_IDX) handleIR(parser, instructionRoot);
 	else if (instruction >= I_TYPE_IDX && instruction < R_TYPE_IDX) handleI(parser, instructionRoot);
 	else if (instruction >= R_TYPE_IDX && instruction < M_TYPE_IDX) handleR(parser, instructionRoot);
@@ -158,9 +165,6 @@ static void parseIdentifier(Parser* parser) {
 	else if (instruction >= Bc_TYPE_IDX && instruction < S_TYPE_IDX) handleBc(parser, instructionRoot);
 	else if (instruction >= S_TYPE_IDX && instruction < F_TYPE_IDX) handleS(parser, instructionRoot);
 	else if (instruction >= F_TYPE_IDX) handleF(parser, instructionRoot);
-	else emitError(ERR_INTERNAL, &linedata, "Instruction `%s` could not be categorized into a type.", idToken->lexeme);
-
-	addAst(parser, instructionRoot);
 
 	parser->sectionTable->entries[parser->sectionTable->activeSection].lp += 4;
 }
@@ -218,6 +222,9 @@ static void parseDirective(Parser* parser) {
 		case ALIGN:
 		case SIZE:
 		case EXTERN:
+			parser->currentTokenIndex++;
+			emitWarning(WARN_UNIMPLEMENTED, &linedata, "Directive `%s` not yet implemented!", directiveToken->lexeme);
+			break;
 		case TYPE: handleType(parser, directiveRoot); break;
 		case SIZEOF:
 		case DEF: handleDef(parser, directiveRoot); break;
@@ -321,4 +328,21 @@ void parse(Parser* parser) {
 void showParserConfig(Parser* parser) {
 	log("Parser Configuration");
 
+}
+
+void addLD(Parser* parser, Node* ldInstrNode) {
+	// Adds a ld immediate/move possible decomposition to the parser's list
+	// Use ldimmTail to make this O(1)
+	struct LDIMM* newLDIMM = (struct LDIMM*) malloc(sizeof(struct LDIMM));
+	if (!newLDIMM) emitError(ERR_MEM, NULL, "Failed to allocate memory for LDIMM node.");
+	newLDIMM->ldInstr = ldInstrNode;
+	newLDIMM->next = NULL;
+
+	if (!parser->ldimmList) {
+		parser->ldimmList = newLDIMM;
+		parser->ldimmTail = newLDIMM;
+	} else {
+		parser->ldimmTail->next = newLDIMM;
+		parser->ldimmTail = newLDIMM;
+	}
 }

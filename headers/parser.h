@@ -9,6 +9,13 @@
 #include "DataTable.h"
 
 
+
+struct LDIMM {
+	Node* ldInstr;
+	struct LDIMM* next;
+};
+
+
 typedef struct ParserConfiguration {
 	bool warningAsFatal;
 	FLAGS8 warnings;
@@ -30,6 +37,9 @@ typedef struct Parser {
 
 	bool processing; // In case of a .end directive, stop processing further lines
 
+	struct LDIMM* ldimmList; // Linked list of ld immediate/move possibledecompositions to process
+	struct LDIMM* ldimmTail;
+
 	SectionTable* sectionTable;
 	SymbolTable* symbolTable;
 	StructTable* structTable;
@@ -44,5 +54,12 @@ void setTables(Parser* parser, SectionTable* sectionTable, SymbolTable* symbolTa
 void parse(Parser* parser);
 
 void showParserConfig(Parser* parser);
+
+/**
+ * 
+ * @param parser 
+ * @param ldInstrNode 
+ */
+void addLD(Parser* parser, Node* ldInstrNode);
 
 #endif

@@ -26,6 +26,17 @@ typedef enum {
 
 
 typedef struct InstructionNode {
+	enum InstrType {
+		I_TYPE,
+		R_TYPE,
+		M_TYPE,
+		BI_TYPE,
+		BU_TYPE,
+		BC_TYPE,
+		S_TYPE,
+		F_TYPE
+	} instrType;
+
 	enum Instructions instruction;
 	// The arguments will depend on the instruction type
 
@@ -111,17 +122,16 @@ typedef struct SymbolNode {
 
 typedef enum {
 	NTYPE_INT8,
-	NTYPE_INT16,
-	NTYPE_INT32,
-	NTYPE_FLOAT,
-
-	NTYPE_UINT32,
-	// Number types for the immediates
-
-	NTYPE_INT24,
-	NTYPE_INT19,
 	NTYPE_INT9,
-	NTYPE_UINT14
+	NTYPE_INT16,
+	NTYPE_INT19,
+	NTYPE_INT24,
+	NTYPE_INT32,
+	
+	NTYPE_UINT14,
+	NTYPE_UINT32,
+
+	NTYPE_FLOAT
 } NumType;
 
 typedef struct NumberNode {
@@ -131,6 +141,7 @@ typedef struct NumberNode {
 		int8_t int8Value;
 		int16_t int16Value;
 		int32_t int32Value;
+		uint32_t uint32Value;
 		float floatValue;
 
 		// Immediate-specific types used in instructions

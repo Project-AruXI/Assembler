@@ -351,8 +351,11 @@ void printAST(Node* root) {
 			break;
 		case ND_OPERATOR:
 			// TEMP
-			rlog("  Left/operand: %p", root->nodeData.operator->data.binary.left);
-			rlog("  Right: %p", root->nodeData.operator->data.binary.right);
+			rlog("  Left/operand: %p {", root->nodeData.operator->data.binary.left);
+			root->nodeData.operator->data.binary.left ? printAST(root->nodeData.operator->data.binary.left) : rlog("    Left is NULL");
+			rlog("}  Right: %p{", root->nodeData.operator->data.binary.right);
+			root->nodeData.operator->data.binary.right ? printAST(root->nodeData.operator->data.binary.right) : rlog("    Right is NULL");
+			rlog("}");
 			break;
 		case ND_TYPE:
 			TypeNode* typeNode = root->nodeData.type;
@@ -401,6 +404,9 @@ InstrNode* initInstructionNode(enum Instructions instruction) {
 	if (!instrNode) emitError(ERR_MEM, NULL, "Failed to allocate memory for instruction node.");
 
 	instrNode->instruction = instruction;
+	// if (instruction == LD) trace("Initialized LD instruction node (%p) to %d.", &instrNode->instruction, instruction);
+
+	// instrType will be set when it is handled
 
 	// Need to null all of `data`
 	// However, since it is a union of various structs, need to use the largest struct to null
@@ -524,8 +530,11 @@ NumNode* initNumberNode(NumType type, int32_t intValue, float floatValue) {
 		case NTYPE_UINT14: 
 			numNode->value.uint14Value = (uint16_t) intValue;
 			break;
+		case NTYPE_UINT32:
+			numNode->value.uint32Value = (uint32_t) intValue;
+			break;
 		default:
-			emitError(ERR_INTERNAL, NULL, "Invalid number type in initNumberNode.");
+			emitError(ERR_INTERNAL, NULL, "Invalid number type in initNumberNode", type);
 			break;
 	}
 
