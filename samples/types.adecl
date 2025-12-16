@@ -1,5 +1,5 @@
 % Normal type sets
-.type ARR0 $object.array % untyped array
+.type ARR0, $object.array % untyped array
 % simple types
 .type ARR1  , $object.array.byte
 .type ARR2 , $object.array.hword
@@ -36,7 +36,7 @@
 
 
 % Conditional assembly/typing
-.if TYPES_ENABLED {
+!if TYPES_ENABLED {
   .type cond, $object.array.Node
 }
 

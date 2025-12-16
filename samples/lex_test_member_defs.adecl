@@ -1,0 +1,4 @@
+% Test member definition lexing in .def
+.def Node {
+	value:8. next:32.
+}
