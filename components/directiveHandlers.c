@@ -658,12 +658,13 @@ void handleZero(Parser* parser, Node* directiveRoot) {
 	addDataEntry(parser->dataTable, zeroDataEntry, parser->sectionTable->activeSection);
 }
 
-void handleFill(Parser *parser, Node *directiveRoot)
-{
+void handleFill(Parser* parser, Node* directiveRoot) {
+	emitWarning(WARN_UNIMPLEMENTED, NULL, "The `.fill` directive is not yet implemented.");
 }
 
 
 void handleSize(Parser* parser, Node* directiveRoot) {
+	emitWarning(WARN_UNIMPLEMENTED, NULL, "The `.size` directive is not yet implemented.");
 }
 
 void handleType(Parser* parser, Node* directiveRoot) {
@@ -823,12 +824,13 @@ void handleType(Parser* parser, Node* directiveRoot) {
 }
 
 
-void handleAlign(Parser *parser, Node *directiveRoot)
-{
+void handleAlign(Parser* parser, Node* directiveRoot) {
+	emitWarning(WARN_UNIMPLEMENTED, NULL, "The `.align` directive is not yet implemented.");
 }
 
-void handleExtern(Parser *parser, Node *directiveRoot)
-{
+void handleExtern(Parser* parser, Node* directiveRoot) {
+	emitWarning(WARN_UNIMPLEMENTED, NULL, "The `.extern` directive is not yet implemented.");
+	// This will require the need for relocation tables
 }
 
 void handleInclude(Parser* parser) {
@@ -1082,6 +1084,6 @@ void handleDef(Parser* parser, Node* directiveRoot) {
 	addStruct(parser->structTable, defStruct);
 }
 
-void handleSizeof(Parser *parser, Node *directiveRoot)
-{
+void handleSizeof(Parser* parser, Node* directiveRoot) {
+	emitWarning(WARN_UNIMPLEMENTED, NULL, "The `.sizeof` directive is not yet implemented.");
 }

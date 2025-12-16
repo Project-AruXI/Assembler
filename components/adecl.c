@@ -1,6 +1,9 @@
 #include "adecl.h"
 #include "diagnostics.h"
 #include "lexer.h"
+#ifdef _WIN32
+#include "getline.h"
+#endif
 
 
 FILE* openADECLFile(sds filename) {

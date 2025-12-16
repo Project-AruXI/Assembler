@@ -183,6 +183,7 @@ void displaySymbolEntry(symb_entry_t* entry) {
 		rtrace("Line:   %d", entry->linenum);
 		rtrace("Source: %s", (entry->source) ? ssGetString(entry->source) : "(unknown)");
 		if (GET_EXPRESSION(entry->flags)) {
+			// Maybe have an option to print the AST in a nice format
 			rtrace("Value:  [Expression AST]");
 		} else {
 			rtrace("Value:  0x%x", entry->value.val);

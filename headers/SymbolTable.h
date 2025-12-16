@@ -39,8 +39,8 @@ typedef struct SymbolEntry {
 } symb_entry_t;
 
 typedef struct SymbolTable {
-	symb_entry_t** entries;
-	uint32_t size;
+	symb_entry_t** entries; // Symbol entries
+	uint32_t size; // Number of entries
 	uint32_t capacity;
 } SymbolTable;
 
@@ -101,7 +101,7 @@ typedef struct SymbolTable {
 #define SET_REFERENCED(flags) (flags |= (1 << 1)) // Sets referenced
 #define SET_DEFINED(flags) (flags |= (1 << 0)) // Sets defined
 
-#define CLR_EXPRESSION(flags) (flags &= ~(1 << 8)) // Sets the expression flag to 0
+#define CLR_EXPRESSION(flags) (flags &= ~(1 << 6)) // Sets the expression flag to 0
 
 
 SymbolTable* initSymbolTable();
