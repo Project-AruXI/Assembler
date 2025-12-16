@@ -5,6 +5,7 @@
 #include "diagnostics.h"
 #include "reserved.h"
 #include "handlers.h"
+#include "expr.h"
 
 
 Parser* initParser(Token** tokens, int tokenCount, ParserConfig config) {
@@ -117,7 +118,6 @@ static void parseIdentifier(Parser* parser) {
 	Token* idToken = parser->tokens[parser->currentTokenIndex];
 
 	Node* instructionRoot = initASTNode(AST_ROOT, ND_INSTRUCTION, idToken, NULL);
-	if (!instructionRoot) emitError(ERR_MEM, NULL, "Failed to create AST node for instruction.");
 
 	linedata_ctx linedata = {
 		.linenum = idToken->linenum,
@@ -144,10 +144,11 @@ static void parseIdentifier(Parser* parser) {
 	enum Instructions instruction = (enum Instructions) index;
 	log("Parsing instruction: `%s`. Set type to `%s`", idToken->lexeme, INSTRUCTIONS[instruction]);
 
-	InstrNode* instructionData = initInstructionNode(instruction);
+	InstrNode* instructionData = initInstructionNode(instruction, parser->sectionTable->activeSection);
 	setNodeData(instructionRoot, instructionData, ND_INSTRUCTION);
 
 	// Go with same system as the old/legacy assembler
+	// Is this the case anymore??????
 
 	if (instruction >= END_TYPE_IDX) emitError(ERR_INTERNAL, &linedata, "Instruction `%s` could not be categorized into a type.", idToken->lexeme);
 
@@ -242,6 +243,87 @@ static void parseDirective(Parser* parser) {
 }
 
 
+static void handleLDImm(Parser* parser, Node* ldInstrNode) {
+	initScope("handleLDImm");
+
+	// These are `ld reg, imm` instructions where `imm` is now(?) known
+	// Only case they are not known is if the symbol is an extern, deal with it later, for now assume all defined
+	// `imm` is an expression tree, it needs to be evald (it results into an address)
+	// Depending on the result size:
+	// If `imm` (an address) is ...
+
+	// TODO
+	// This becomes tricky actually
+	// In the case that it can be IR-relative, the offset is so small (9 bits signed) that realistically, most addresses won't fit
+	// Even if it can fit, the linker will add more text and data that the offset becomes invalid
+	// This would require the use of relocation records, telling the linker that there is IR-relative
+	// For now, skip the IR-relative and just do decomposition
+	emitWarning(WARN_UNIMPLEMENTED, NULL, "LD immediate form instruction to IR-relative not yet implemented!");
+
+	Node* immNode = ldInstrNode->nodeData.instruction->data.mType.imm;
+	bool evald = evaluateExpression(immNode, parser->symbolTable);
+	linedata_ctx linedata = {
+		.linenum = ldInstrNode->token->linenum,
+		.source = ssGetString(ldInstrNode->token->sstring)
+	};
+	if (!evald) emitError(ERR_INVALID_EXPRESSION, &linedata, "Failed to evaluate immediate expression for LD immediate form instruction.");
+
+	// uint32_t immValue = immNode->nodeData.number->value;
+
+	// if (immValue <= 0xFFF) {
+	// 	// No need to decompose
+	// 	log("LD immediate/move form instruction immediate fits in 12 bits, no decomposition needed.");
+	// 	return;
+	// }
+
+	// log("Decomposing LD immediate form instruction with immediate: 0x%08X", immValue);
+
+	// decomposeLD uses the value in immNode to create the decomposition instructions
+	// Since this function is only for ld imm, the imm is an address
+	// This calls the need for relocation records to be made
+	// However, the imm should be set to 0 so it can be fixed up by the linker (similar to how gcc/clang do it)
+	// Since the node value is used, this will need to be set to 0
+	// But this will overwrite the evald expression, so it will need to be saved
+
+	uint32_t savedImmValue = 0;
+
+	// The node can either be an operator node or a number node
+	if (immNode->nodeType == ND_NUMBER) {
+		savedImmValue = immNode->nodeData.number->value.uint32Value;
+		immNode->nodeData.number->value.uint32Value = 0;
+	} else if (immNode->nodeType == ND_OPERATOR) {
+		savedImmValue = immNode->nodeData.operator->value;
+		immNode->nodeData.operator->value = 0;
+	}
+
+	// TODO: relocation records
+
+
+	decomposeLD(ldInstrNode, ldInstrNode->nodeData.instruction->data.mType.xds, immNode);
+	// Update the LP, reminder that even though 6 instructions were added, this instruction already took care of one
+	parser->sectionTable->entries[ldInstrNode->nodeData.instruction->section].lp += (4 * 5);
+}
+
+static void handleLDMove(Parser* parser, Node* ldInstrNode) {
+	initScope("handleLDMove");
+
+	// Similar to handleLDImm, but for move form
+	// This is just a defered decomposition from the handler (refer to comment)
+
+	Node* literalNode = ldInstrNode->nodeData.instruction->data.mType.imm;
+	// Since this is for `ld reg, =imm`, the `imm` field actually holds the literal operator
+	Node* immNode = literalNode->nodeData.operator->data.unary.operand;
+
+	bool evald = evaluateExpression(immNode, parser->symbolTable);
+	linedata_ctx linedata = {
+		.linenum = ldInstrNode->token->linenum,
+		.source = ssGetString(ldInstrNode->token->sstring)
+	};
+	if (!evald) emitError(ERR_INVALID_EXPRESSION, &linedata, "Failed to evaluate immediate expression for LD immediate form instruction.");
+
+	decomposeLD(ldInstrNode, ldInstrNode->nodeData.instruction->data.mType.xds, immNode);
+}
+
 void parse(Parser* parser) {
 	initScope("parse");
 
@@ -284,7 +366,7 @@ void parse(Parser* parser) {
 			case TK_MINUS:
 			case TK_ASTERISK:
 			case TK_DIVIDE:
-			case TK_LD_IMM:
+			case TK_LITERAL:
 			case TK_BITWISE_AND:
 			case TK_BITWISE_OR:
 			case TK_BITWISE_XOR:
@@ -317,12 +399,26 @@ void parse(Parser* parser) {
 		}
 		currentTokenIndex = parser->currentTokenIndex;
 
-		if (parser->processing == false) {
+		if (!parser->processing) {
 			emitWarning(WARN_UNEXPECTED, NULL, "Parser has encountered a .end directive. Further lines will be ignored.");
 			break;
 		}
 	}
 
+	rlog("Parsing complete. Will now fix any LD imm instructions.");
+	// All symbols have been gathered
+	// Try to fix the LD imm/move instructions
+	struct LDIMM* current = parser->ldimmList;
+	while (current) {
+		// Depending on the LD type
+		// If immediate form, call handleLDImm
+		// If move form, call handleLDMove
+
+		if (current->ldInstr->nodeData.instruction->data.mType.imm->token->type == TK_LITERAL) handleLDMove(parser, current->ldInstr);
+		else handleLDImm(parser, current->ldInstr);
+
+		current = current->next;
+	}
 }
 
 void showParserConfig(Parser* parser) {

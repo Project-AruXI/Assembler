@@ -218,6 +218,7 @@ void printAST(Node* root) {
 						rlog("    imm:");
 						printAST(instrNode->data.mType.imm);
 					}
+					// TODO: print in the case of LD reg, =?imm decompositions
 					break;
 				case UB: case CALL:
 					// Bi-Type
@@ -399,12 +400,14 @@ Node** nodeArrayInsert(Node** array, int* capacity, int* count, Node* node) {
 }
 
 
-InstrNode* initInstructionNode(enum Instructions instruction) {
+InstrNode* initInstructionNode(enum Instructions instruction, uint8_t section) {
 	InstrNode* instrNode = (InstrNode*) malloc(sizeof(InstrNode));
 	if (!instrNode) emitError(ERR_MEM, NULL, "Failed to allocate memory for instruction node.");
 
 	instrNode->instruction = instruction;
 	// if (instruction == LD) trace("Initialized LD instruction node (%p) to %d.", &instrNode->instruction, instruction);
+
+	instrNode->section = section;
 
 	// instrType will be set when it is handled
 
@@ -415,11 +418,56 @@ InstrNode* initInstructionNode(enum Instructions instruction) {
 	instrNode->data.mType.xi = NULL;
 	instrNode->data.mType.imm = NULL;
 
+	for (int i = 0; i < 7; i++) {
+		instrNode->data.mType.expanded[i] = NULL;
+	}
+
 	return instrNode;
 }
 
 void deinitInstructionNode(InstrNode* instrNode) {
-	// free(instrNode);
+	// Need to check the instruction type and free the relevant nodes
+	switch (instrNode->instrType) {
+		case I_TYPE:
+			if (instrNode->data.iType.xd) freeAST(instrNode->data.iType.xd);
+			if (instrNode->data.iType.xs) freeAST(instrNode->data.iType.xs);
+			if (instrNode->data.iType.imm) freeAST(instrNode->data.iType.imm);
+			break;
+		case R_TYPE:
+			if (instrNode->data.rType.xd) freeAST(instrNode->data.rType.xd);
+			if (instrNode->data.rType.xs) freeAST(instrNode->data.rType.xs);
+			if (instrNode->data.rType.xr) freeAST(instrNode->data.rType.xr);
+			break;
+		case M_TYPE:
+			if (instrNode->data.mType.xds) freeAST(instrNode->data.mType.xds);
+			if (instrNode->data.mType.xb) freeAST(instrNode->data.mType.xb);
+			if (instrNode->data.mType.xi) freeAST(instrNode->data.mType.xi);
+			if (instrNode->data.mType.imm) freeAST(instrNode->data.mType.imm);
+			for (int i = 0; i < 7; i++) {
+				if (instrNode->data.mType.expanded[i]) {
+					freeAST(instrNode->data.mType.expanded[i]);
+				}
+			}
+			break;
+		case BI_TYPE:
+			if (instrNode->data.biType.offset) freeAST(instrNode->data.biType.offset);
+			break;
+		case BU_TYPE:
+			if (instrNode->data.buType.xd) freeAST(instrNode->data.buType.xd);
+			break;
+		case BC_TYPE:
+			if (instrNode->data.bcType.cond) freeAST(instrNode->data.bcType.cond);
+			if (instrNode->data.bcType.offset) freeAST(instrNode->data.bcType.offset);
+			break;
+		case S_TYPE:
+			if (instrNode->data.sType.xd) freeAST(instrNode->data.sType.xd);
+			if (instrNode->data.sType.xs) freeAST(instrNode->data.sType.xs);
+			break;
+		default:
+			emitError(ERR_INTERNAL, NULL, "Invalid instruction type in deinitInstructionNode.");
+			break;
+	}
+	free(instrNode);
 }
 
 RegNode* initRegisterNode(int regNumber) {

@@ -442,7 +442,7 @@ Token* getNextToken(Lexer* lexer) {
 				emitError(ERR_INVALID_SYNTAX, &linedata, "Unexpected character: '%c'", lexer->peekedChar);
 			}
 
-			token->type = TK_LD_IMM;
+			token->type = TK_LITERAL;
 			token->lexeme = sdsnew("=");
 			advance(lexer);
 			return token;
@@ -688,7 +688,7 @@ void printToken(Token* token) {
 		case TK_ASTERISK: typeStr = "TK_ASTERISK"; break;
 		case TK_DIVIDE: typeStr = "TK_DIVIDE"; break;
 		case TK_COMMENT: typeStr = "TK_COMMENT"; break;
-		case TK_LD_IMM: typeStr = "TK_LD_IMM"; break;
+		case TK_LITERAL: typeStr = "TK_LITERAL"; break;
 		case TK_BITWISE_AND: typeStr = "TK_BITWISE_AND"; break;
 		case TK_BITWISE_OR: typeStr = "TK_BITWISE_OR"; break;
 		case TK_BITWISE_XOR: typeStr = "TK_BITWISE_XOR"; break;

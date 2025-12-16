@@ -98,5 +98,14 @@ void handleS(Parser* parser, Node* instrRoot);
 void handleF(Parser* parser, Node* instrRoot);
 
 
+/**
+ * Decomposes an ld immediate/move instruction into multiple instructions as needed.
+ * It just fills in the `expanded` array of the ld immediate/move instruction node.
+ * If the instruction id ld immediate, the last instruction will be an ld instruction.
+ * @param ldInstrNode The AST node of the ld instruction
+ * @param xdNode The destination register node
+ * @param immNode The immediate value node
+ */
+void decomposeLD(Node* ldInstrNode, Node* xdNode, Node* immNode);
 
 #endif

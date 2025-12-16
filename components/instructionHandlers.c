@@ -466,7 +466,7 @@ void handleM(Parser* parser, Node* instrRoot) {
 	// The acceptable next tokens are:
 	// - `[` TK_LBRACKET
 	// - TK_IMM (#...), TK_SYMBOL, TK_INTEGER, TK_LPAREN, TK_PLUS, TK_MINUS, TK_LP (for ld reg, imm)
-	// - `=` TK_LD_IMM (for ld reg, =imm)
+	// - `=` TK_LITERAL (for ld reg, =imm)
 
 	parser->currentTokenIndex++;
 	nextToken = parser->tokens[parser->currentTokenIndex];
@@ -501,8 +501,6 @@ void handleM(Parser* parser, Node* instrRoot) {
 
 			instrRoot->nodeData.instruction->data.mType.xi = NULL;
 			instrRoot->nodeData.instruction->data.mType.imm = immExprRoot;
-
-			instrRoot->nodeData.instruction->instrType = M_TYPE;
 
 			parser->currentTokenIndex++;
 			nextToken = parser->tokens[parser->currentTokenIndex];
@@ -580,12 +578,12 @@ void handleM(Parser* parser, Node* instrRoot) {
 		// For know, leave as is, and when it is evaluated, figure out if it can be IR-relative or needs to be split
 		// This is to be done before codegen but after the entire file has been parsed
 		// Use the linked list in parser to keep track of these instructions
+		// In the case that it needs to be split, it will use the `expanded` array
+		// Tricky thing is the LP
 
 		instrRoot->nodeData.instruction->data.mType.xb = NULL;
 		instrRoot->nodeData.instruction->data.mType.xi = NULL;
 		instrRoot->nodeData.instruction->data.mType.imm = immExprRoot;
-
-		instrRoot->nodeData.instruction->instrType = M_TYPE;
 
 		addLD(parser, instrRoot);
 
@@ -594,26 +592,31 @@ void handleM(Parser* parser, Node* instrRoot) {
 		parser->currentTokenIndex++; // Consume the newline
 
 		return;
-	} else if (nextToken->type == TK_LD_IMM) {
+	} else if (nextToken->type == TK_LITERAL) {
 		// ld reg, =imm
 
 		Node* literalNode = initASTNode(AST_INTERNAL, ND_OPERATOR, nextToken, instrRoot);
 		OpNode* literalData = initOperatorNode();
 		setNodeData(literalNode, literalData, ND_OPERATOR);
-		
+
 		parser->currentTokenIndex++;
 		nextToken = parser->tokens[parser->currentTokenIndex];
 		// Need to check first????
 		Node* immExprRoot = parseExpression(parser);
 		immExprRoot->parent = literalNode;
-		
+		setUnaryOperand(literalData, immExprRoot);
+
 		instrRoot->nodeData.instruction->data.mType.xb = NULL;
 		instrRoot->nodeData.instruction->data.mType.xi = NULL;
 		instrRoot->nodeData.instruction->data.mType.imm = literalNode;
 
-		instrRoot->nodeData.instruction->instrType = M_TYPE;
-
+		// This is an immediate move, so decomposition is a must
+		// However, evaluation will not occur until the very end, so hold on
 		addLD(parser, instrRoot);
+		// Even though decomposition did not occur, pretend it did
+		// Increment the LP accordingly
+		// 6 instructions were added but the LP was already increased for this LD, so it takes care of one
+		parser->sectionTable->entries[parser->sectionTable->activeSection].lp += (4 * 5);
 
 		nextToken = parser->tokens[parser->currentTokenIndex];
 		if (nextToken->type != TK_NEWLINE) emitError(ERR_INVALID_SYNTAX, &linedata, "Expected newline after immediate expression, got `%s`.", nextToken->lexeme);
@@ -875,4 +878,183 @@ void handleF(Parser* parser, Node* instrRoot) {
 
 	emitWarning(WARN_UNIMPLEMENTED, &linedata, "F-type instruction `%s` not yet implemented.", instrToken->lexeme);
 	// log("Handling F instruction at line %d", instrToken->linenum);
+}
+
+void decomposeLD(Node* ldInstrNode, Node* xdNode, Node* immNode) {
+	initScope("decomposeLD");
+
+
+	Token* instrToken = ldInstrNode->token;
+	linedata_ctx linedata = {
+		.linenum = instrToken->linenum,
+		.source = ssGetString(instrToken->sstring)
+	};
+
+	// This will create the following instructions:
+	// `mv reg, imm[31:18]`
+	// `lsl reg, reg, #18`
+	// `mv c0, imm[17:4]`
+	// `lsl c0, c0, #4`
+	// `or reg, reg, c0`
+	// `add reg, reg, imm[3:0]`
+	// Each instruction that has `reg` will have its own copy of `xdNode`
+
+	// Split the imm here
+	// Take note that immNode can either be a number or an operator
+	uint32_t imm;
+	if (immNode->nodeType == ND_NUMBER) imm = immNode->nodeData.number->value.uint32Value;
+	else if (immNode->nodeType == ND_OPERATOR) imm = immNode->nodeData.operator->value; // Assume it has been evaled
+
+	uint16_t upperImm = (imm >> 18) & 0x3FFF; // imm[31:18]
+	uint16_t midImm = (imm >> 4) & 0x3FFF; // imm[17:4]
+	uint8_t lowerImm = imm & 0x0F; // imm[3:0]
+
+
+	int reg = xdNode->nodeData.reg->regNumber;
+	int c0 = 12; // x12
+	int section = ldInstrNode->nodeData.instruction->section;
+
+	// Note to self: For these instruction, the token fields are being set to NULL
+	// Make sure that in other places that access token, it checks for its existence
+	// If there is a segfault, most likely it is because of this
+	// Future me: yes, there indeed was in codegen:getImmediateEncoding in printing
+
+	// Create `mv reg, imm[31:18]`
+	Node* mv0Instruction = initASTNode(AST_ROOT, ND_INSTRUCTION, NULL, NULL); // Create new instruction AST node
+	InstrNode* mv0Data = initInstructionNode(MV, section); // Create new instruction data node
+	setNodeData(mv0Instruction, mv0Data, ND_INSTRUCTION); // Set data node to AST node
+	mv0Data->instrType = I_TYPE; // Set data node type
+	Node* mv0_xdNode = initASTNode(AST_LEAF, ND_REGISTER, NULL, NULL); // Create new register AST node
+	RegNode* mv0_xdData = initRegisterNode(reg); // Create new register data node
+	setNodeData(mv0_xdNode, mv0_xdData, ND_REGISTER); // Set data node to AST node
+	mv0Data->data.iType.xd = mv0_xdNode; // Set xd
+	Node* mv0_immNode = initASTNode(AST_LEAF, ND_NUMBER, NULL, NULL); // Create new immediate AST node
+	NumNode* mv0_immData = initNumberNode(NTYPE_UINT14, upperImm, 0.0); // Create new immediate data node
+	setNodeData(mv0_immNode, mv0_immData, ND_NUMBER); // Set data node to AST node
+	mv0Data->data.iType.imm = mv0_immNode; // Set imm
+
+	// Create `lsl reg, reg, #18`
+	Node* lsl0Instruction = initASTNode(AST_ROOT, ND_INSTRUCTION, NULL, NULL);
+	InstrNode* lsl0Data = initInstructionNode(LSL, section);
+	setNodeData(lsl0Instruction, lsl0Data, ND_INSTRUCTION);
+	lsl0Data->instrType = I_TYPE;
+	Node* lsl0_xdNode = initASTNode(AST_LEAF, ND_REGISTER, NULL, NULL);
+	RegNode* lsl0_xdData = initRegisterNode(reg);
+	setNodeData(lsl0_xdNode, lsl0_xdData, ND_REGISTER);
+	lsl0Data->data.iType.xd = lsl0_xdNode;
+	Node* lsl0_xsNode = initASTNode(AST_LEAF, ND_REGISTER, NULL, NULL);
+	RegNode* lsl0_xsData = initRegisterNode(reg);
+	setNodeData(lsl0_xsNode, lsl0_xsData, ND_REGISTER);
+	lsl0Data->data.iType.xs = lsl0_xsNode;
+	// Can just create the immediate as that is known
+	Node* lsl0_immNode = initASTNode(AST_LEAF, ND_NUMBER, NULL, NULL);
+	NumNode* lsl0_immData = initNumberNode(NTYPE_UINT14, 18, 0.0);
+	setNodeData(lsl0_immNode, lsl0_immData, ND_NUMBER);
+	lsl0Data->data.iType.imm = lsl0_immNode;
+
+	// Create `mv c0, imm[17:4]`
+	Node* mv1Instruction = initASTNode(AST_ROOT, ND_INSTRUCTION, NULL, NULL);
+	InstrNode* mv1Data = initInstructionNode(MV, section);
+	setNodeData(mv1Instruction, mv1Data, ND_INSTRUCTION);
+	mv1Data->instrType = I_TYPE;
+	Node* mv1_xdNode = initASTNode(AST_LEAF, ND_REGISTER, NULL, NULL);
+	RegNode* mv1_xdData = initRegisterNode(c0);
+	setNodeData(mv1_xdNode, mv1_xdData, ND_REGISTER);
+	mv1Data->data.iType.xd = mv1_xdNode;
+	Node* mv1_immNode = initASTNode(AST_LEAF, ND_NUMBER, NULL, NULL);
+	NumNode* mv1_immData = initNumberNode(NTYPE_UINT14, midImm, 0.0);
+	setNodeData(mv1_immNode, mv1_immData, ND_NUMBER);
+	mv1Data->data.iType.imm = mv1_immNode;
+
+	// Create `lsl c0, c0, #4`
+	Node* lsl1Instruction = initASTNode(AST_ROOT, ND_INSTRUCTION, NULL, NULL);
+	InstrNode* lsl1Data = initInstructionNode(LSL, section);
+	setNodeData(lsl1Instruction, lsl1Data, ND_INSTRUCTION);
+	lsl1Data->instrType = I_TYPE;
+	Node* lsl1_xdNode = initASTNode(AST_LEAF, ND_REGISTER, NULL, NULL);
+	RegNode* lsl1_xdData = initRegisterNode(c0);
+	setNodeData(lsl1_xdNode, lsl1_xdData, ND_REGISTER);
+	lsl1Data->data.iType.xd = lsl1_xdNode;
+	Node* lsl1_xsNode = initASTNode(AST_LEAF, ND_REGISTER, NULL, NULL);
+	RegNode* lsl1_xsData = initRegisterNode(c0);
+	setNodeData(lsl1_xsNode, lsl1_xsData, ND_REGISTER);
+	lsl1Data->data.iType.xs = lsl1_xsNode;
+	Node* lsl1_immNode = initASTNode(AST_LEAF, ND_NUMBER, NULL, NULL);
+	NumNode* lsl1_immData = initNumberNode(NTYPE_UINT14, 4, 0.0);
+	setNodeData(lsl1_immNode, lsl1_immData, ND_NUMBER);
+	lsl1Data->data.iType.imm = lsl1_immNode;
+
+	// Create `or reg, reg, c0`
+	Node* orInstruction = initASTNode(AST_ROOT, ND_INSTRUCTION, NULL, NULL);
+	InstrNode* orData = initInstructionNode(OR, section);
+	setNodeData(orInstruction, orData, ND_INSTRUCTION);
+	orData->instrType = R_TYPE;
+	Node* or_xdNode = initASTNode(AST_LEAF, ND_REGISTER, NULL, NULL);
+	RegNode* or_xdData = initRegisterNode(reg);
+	setNodeData(or_xdNode, or_xdData, ND_REGISTER);
+	orData->data.rType.xd = or_xdNode;
+	Node* or_xsNode = initASTNode(AST_LEAF, ND_REGISTER, NULL, NULL);
+	RegNode* or_xsData = initRegisterNode(reg);
+	setNodeData(or_xsNode, or_xsData, ND_REGISTER);
+	orData->data.rType.xs = or_xsNode;
+	Node* or_xrNode = initASTNode(AST_LEAF, ND_REGISTER, NULL, NULL);
+	RegNode* or_xrData = initRegisterNode(c0);
+	setNodeData(or_xrNode, or_xrData, ND_REGISTER);
+	orData->data.rType.xr = or_xrNode;
+
+	// Create `add reg, reg, imm[3:0]`
+	Node* addInstruction = initASTNode(AST_ROOT, ND_INSTRUCTION, NULL, NULL);
+	InstrNode* addData = initInstructionNode(ADD, section);
+	setNodeData(addInstruction, addData, ND_INSTRUCTION);
+	addData->instrType = I_TYPE;
+	Node* add_xdNode = initASTNode(AST_LEAF, ND_REGISTER, NULL, NULL);
+	RegNode* add_xdData = initRegisterNode(reg);
+	setNodeData(add_xdNode, add_xdData, ND_REGISTER);
+	addData->data.iType.xd = add_xdNode;
+	Node* add_xsNode = initASTNode(AST_LEAF, ND_REGISTER, NULL, NULL);
+	RegNode* add_xsData = initRegisterNode(reg);
+	setNodeData(add_xsNode, add_xsData, ND_REGISTER);
+	addData->data.iType.xs = add_xsNode;
+	Node* add_immNode = initASTNode(AST_LEAF, ND_NUMBER, NULL, NULL);
+	NumNode* add_immData = initNumberNode(NTYPE_UINT14, lowerImm, 0.0);
+	setNodeData(add_immNode, add_immData, ND_NUMBER);
+	addData->data.iType.imm = add_immNode;
+	
+	// In the case that the instruction is ld reg, imm, the last `ld reg, [reg]` must be made
+	// This can be checked via the imm field
+	// If the node is of type operator, it means it is the `=` form
+	Node* ldInstruction = NULL;
+
+	struct ASTNode* literalNode = ldInstrNode->nodeData.instruction->data.mType.imm;
+
+	// The imm field needs to be set
+	if (!literalNode) emitError(ERR_INTERNAL, NULL, "Expected immediate field in ld instruction node to be non-null for decomposition.");
+
+	// To check if `=`, the token needs to be accessed as the node type being operator means nothing
+	// since there is a (high) chance that imm may hold an expression tree with an operator as its root
+
+	if (literalNode->token->type != TK_LITERAL) {
+		// Make `ld reg, [reg]`
+		ldInstruction = initASTNode(AST_ROOT, ND_INSTRUCTION, NULL, NULL);
+		InstrNode* ldData = initInstructionNode(LD, section);
+		setNodeData(ldInstruction, ldData, ND_INSTRUCTION);
+		ldData->instrType = M_TYPE;
+		Node* ld_xdNode = initASTNode(AST_LEAF, ND_REGISTER, NULL, NULL);
+		RegNode* ld_xdData = initRegisterNode(reg);
+		setNodeData(ld_xdNode, ld_xdData, ND_REGISTER);
+		ldData->data.mType.xds = ld_xdNode;
+		Node* ld_xbNode = initASTNode(AST_LEAF, ND_REGISTER, NULL, NULL);
+		RegNode* ld_xbData = initRegisterNode(reg);
+		setNodeData(ld_xbNode, ld_xbData, ND_REGISTER);
+		ldData->data.mType.xb = ld_xbNode;
+	}
+
+	// Now set the expanded array
+	ldInstrNode->nodeData.instruction->data.mType.expanded[0] = mv0Instruction;
+	ldInstrNode->nodeData.instruction->data.mType.expanded[1] = lsl0Instruction;
+	ldInstrNode->nodeData.instruction->data.mType.expanded[2] = mv1Instruction;
+	ldInstrNode->nodeData.instruction->data.mType.expanded[3] = lsl1Instruction;
+	ldInstrNode->nodeData.instruction->data.mType.expanded[4] = orInstruction;
+	ldInstrNode->nodeData.instruction->data.mType.expanded[5] = addInstruction;
+	ldInstrNode->nodeData.instruction->data.mType.expanded[6] = ldInstruction;
 }

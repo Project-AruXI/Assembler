@@ -38,12 +38,12 @@ void deinitCodeGenerator(CodeGen* codegen) {
 static uint32_t getImmediateEncoding(Node* immNode, NumType expectedType, SymbolTable* symbTable) {
 	initScope("getImmediateEncoding");
 
-	log("Getting immediate encoding for %s", immNode->token->lexeme);
+	log("Getting immediate encoding for %s", (immNode->token ? immNode->token->lexeme : "unknown"));
 	printAST(immNode);
 	bool evald = evaluateExpression(immNode, symbTable);
 	linedata_ctx linedata = {
-		.linenum = immNode->token->linenum,
-		.source = ssGetString(immNode->token->sstring)
+		.linenum = immNode->token ? immNode->token->linenum : -1,
+		.source = immNode->token ? ssGetString(immNode->token->sstring) : NULL
 	};
 	if (!evald) emitError(ERR_INVALID_EXPRESSION, &linedata, "Could not evaluate immediate expression.");
 
@@ -137,9 +137,8 @@ static uint32_t encodeI(InstrNode* data, SymbolTable* symbTable) {
 
 	uint16_t imm14 = 0x0000;
 
-	if (immNode) {
-		imm14 = (uint16_t) getImmediateEncoding(immNode, NTYPE_UINT14, symbTable);
-	} else {
+	if (immNode) imm14 = (uint16_t) getImmediateEncoding(immNode, NTYPE_UINT14, symbTable);
+	else {
 		// For security, check that the instruction is in fact NOP
 		if (data->instruction != NOP) emitError(ERR_INTERNAL, NULL, "Immediate node is NULL for non-NOP instruction.");
 	}
@@ -215,15 +214,11 @@ static uint32_t encodeM(InstrNode* data, SymbolTable* symbTable) {
 	}
 
 	uint8_t rd = data->data.mType.xds->nodeData.reg->regNumber;
-	// rs is the optional base register
-	// It does not exist when the instruction is LD immediate form
-	uint8_t rs = data->data.mType.xb ? data->data.mType.xb->nodeData.reg->regNumber : 0b00000;
-	// Ensure that for all other forms other than LD immediate, rs is not null
-	if (data->instruction != LD) {
-		if (!data->data.mType.xb) {
-			emitError(ERR_INTERNAL, NULL, "Base register is NULL for non-LD immediate instruction.");
-		}
-	}
+	// rs is the base register
+	// It does not exist when the instruction is LD immediate form but this should already be taken care of
+	if (!data->data.mType.xb) emitError(ERR_INTERNAL, NULL, "Base register is NULL. This indicates a LD imm/move which should not be encoded as is.");
+
+	uint8_t rs = data->data.mType.xb->nodeData.reg->regNumber;
 
 	// rr is the optional index register, defaults to 0b00000
 	uint8_t rr = data->data.mType.xi ? data->data.mType.xi->nodeData.reg->regNumber : 0b00000;
@@ -484,7 +479,21 @@ void gencode(Parser* parser, CodeGen* codegen) {
 		switch (ast->nodeType) {
 			case ND_INSTRUCTION:
 				log("  Instruction");
-				gentext(parser, codegen, ast);
+				// Quick intervention
+				// In the case that the ast is an LD instruction
+				// And the LD is LD imm/move, the text to generate is not the LD instruction itself but the decomposed ones in `expanded`
+				if (ast->nodeData.instruction->instruction == LD && !ast->nodeData.instruction->data.mType.xb) {
+					for (int i = 0; i < 5; i++) {
+						Node* expandedInstr = ast->nodeData.instruction->data.mType.expanded[i];
+						log("    Generating expanded instruction %d for LD immediate/move form:", i);
+						gentext(parser, codegen, expandedInstr);
+					}
+
+					if (ast->nodeData.instruction->data.mType.expanded[6]) {
+						log("    Generating expanded instruction 6 for LD immediate form:");
+						gentext(parser, codegen, ast->nodeData.instruction->data.mType.expanded[6]);
+					}
+				} else gentext(parser, codegen, ast);
 				break;
 			case ND_DIRECTIVE:
 				// emitWarning(WARN_UNIMPLEMENTED, &linedata, "Directive codegen.");
@@ -514,21 +523,21 @@ void gencode(Parser* parser, CodeGen* codegen) {
 
 
 void displayCodeGen(CodeGen* codegen) {
-	log("CodeGen State:");
-	log("Text Section: %d instructions", codegen->text.instructionCount);
+	rlog("CodeGen State:");
+	rlog("Text Section: %d instructions", codegen->text.instructionCount);
 	for (int i = 0; i < codegen->text.instructionCount; i++) {
-		log("  [%04d] 0x%08X", i, codegen->text.instructions[i]);
+		rlog("  [%04d] 0x%08X", i, codegen->text.instructions[i]);
 	}
-	log("Data Section: %d bytes", codegen->data.dataCount);
+	rlog("Data Section: %d bytes", codegen->data.dataCount);
 	for (int i = 0; i < codegen->data.dataCount; i++) {
 		if (i % 16 == 0) log("  [%04d] ", i);
-		log("%02X ", codegen->data.data[i]);
-		if (i % 16 == 15 || i == codegen->data.dataCount - 1) log("\n");
+		rlog("%02X ", codegen->data.data[i]);
+		if (i % 16 == 15 || i == codegen->data.dataCount - 1) rlog("\n");
 	}
-	log("Const Section: %d bytes", codegen->consts.dataCount);
+	rlog("Const Section: %d bytes", codegen->consts.dataCount);
 	for (int i = 0; i < codegen->consts.dataCount; i++) {
-		if (i % 16 == 0) log("  [%04d] ", i);
-		log("%02X ", codegen->consts.data[i]);
-		if (i % 16 == 15 || i == codegen->consts.dataCount - 1) log("\n");
+		if (i % 16 == 0) rlog("  [%04d] ", i);
+		rlog("%02X ", codegen->consts.data[i]);
+		if (i % 16 == 15 || i == codegen->consts.dataCount - 1) rlog("\n");
 	}
 }

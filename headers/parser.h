@@ -37,7 +37,7 @@ typedef struct Parser {
 
 	bool processing; // In case of a .end directive, stop processing further lines
 
-	struct LDIMM* ldimmList; // Linked list of ld immediate/move possibledecompositions to process
+	struct LDIMM* ldimmList; // Linked list of ld immediate/move possible decompositions to process
 	struct LDIMM* ldimmTail;
 
 	SectionTable* sectionTable;
@@ -56,9 +56,10 @@ void parse(Parser* parser);
 void showParserConfig(Parser* parser);
 
 /**
- * 
- * @param parser 
- * @param ldInstrNode 
+ * Adds an ld immediate/move instruction decomposition to the parser's list for quick access.
+ * This allows the parser to keep track of all such instructions that may need to be decomposed later.
+ * @param parser The parser
+ * @param ldInstrNode The AST node of the ld instruction
  */
 void addLD(Parser* parser, Node* ldInstrNode);
 

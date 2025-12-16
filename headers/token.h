@@ -52,7 +52,7 @@ typedef enum {
 	TK_STRING, // "[string]"
 	TK_DOT, // .
 	TK_COMMENT, // %
-	TK_LD_IMM, // =
+	TK_LITERAL, // =
 	TK_PLUS, // +
 	TK_MINUS, // -
 	TK_ASTERISK, // *

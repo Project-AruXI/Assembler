@@ -40,6 +40,8 @@ typedef struct InstructionNode {
 	enum Instructions instruction;
 	// The arguments will depend on the instruction type
 
+	uint8_t section; // The section that the instruction is in, this is only needed for LD imm/move instructions
+
 	union {
 		struct {
 			struct ASTNode* xd;
@@ -63,6 +65,7 @@ typedef struct InstructionNode {
 			//  while `imm` signifies to load from the address of the immediate value
 			// Need a way to indicate this as, so `imm` will hold the `=` token
 			// That way, it can be checked if `imm` is type operator (and it is the only non-null), then it is the mov form
+			struct ASTNode* expanded[7]; // Array to hold the expanded instructions in the case of an LD imm/move decomposition
 		} mType; // For M-type instructions
 
 		struct {
@@ -281,7 +284,7 @@ Node** nodeArrayInsert(Node** array, int* capacity, int* count, Node* node);
 
 
 
-InstrNode* initInstructionNode(enum Instructions instruction);
+InstrNode* initInstructionNode(enum Instructions instruction, uint8_t section);
 void deinitInstructionNode(InstrNode* instrNode);
 
 // Add functions to set the various operands, number of functions depending on different instruction types
