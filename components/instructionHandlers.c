@@ -148,6 +148,8 @@ void handleIR(Parser* parser, Node* instrRoot) {
 			instrRoot->nodeData.instruction->data.iType.imm = immExprRoot;
 		}
 
+		instrRoot->nodeData.instruction->instrType = I_TYPE;
+
 		nextToken = parser->tokens[parser->currentTokenIndex];
 		if (nextToken->type != TK_NEWLINE) emitError(ERR_INVALID_SYNTAX, &linedata, "Expected newline after immediate operand of `%s` instruction, got `%s`.", instrToken->lexeme, nextToken->lexeme);
 		
@@ -184,6 +186,8 @@ void handleIR(Parser* parser, Node* instrRoot) {
 				instrRoot->nodeData.instruction->data.rType.xs = xsNode;
 			}
 
+			instrRoot->nodeData.instruction->instrType = R_TYPE;
+
 			parser->currentTokenIndex++; // Consume the newline
 
 			return;
@@ -205,6 +209,8 @@ void handleIR(Parser* parser, Node* instrRoot) {
 				instrRoot->nodeData.instruction->data.rType.xs = xsNode;
 				instrRoot->nodeData.instruction->data.rType.xr = xrNode;
 
+				instrRoot->nodeData.instruction->instrType = R_TYPE;
+
 				parser->currentTokenIndex++;
 				nextToken = parser->tokens[parser->currentTokenIndex];
 				if (nextToken->type != TK_NEWLINE) emitError(ERR_INVALID_SYNTAX, &linedata, "Expected newline after third operand of `%s` instruction, got `%s`.", instrToken->lexeme, nextToken->lexeme);
@@ -223,6 +229,8 @@ void handleIR(Parser* parser, Node* instrRoot) {
 				instrRoot->nodeData.instruction->data.iType.xd = xdNode;
 				instrRoot->nodeData.instruction->data.iType.xs = xsNode;
 				instrRoot->nodeData.instruction->data.iType.imm = immExprRoot;
+
+				instrRoot->nodeData.instruction->instrType = I_TYPE;
 
 				nextToken = parser->tokens[parser->currentTokenIndex];
 				if (nextToken->type != TK_NEWLINE) emitError(ERR_INVALID_SYNTAX, &linedata, "Expected newline after immediate operand of `%s` instruction, got `%s`.", instrToken->lexeme, nextToken->lexeme);
@@ -252,6 +260,7 @@ void handleI(Parser* parser, Node* instrRoot) {
 	log("Handling I instruction at line %d", instrToken->linenum);
 
 	enum Instructions instrType = instrRoot->nodeData.instruction->instruction;
+	instrRoot->nodeData.instruction->instrType = I_TYPE;
 
 	// Instructions are in `xd, xs, imm` format except nop where it is an alias of `add xz, xz, #0`
 	// However, as of now, the only true I-type (that does not have an R-type form) is `nop`
@@ -279,7 +288,7 @@ void handleR(Parser* parser, Node* instrRoot) {
 
 	log("Handling R instruction at line %d", instrToken->linenum);
 
-	// enum Instructions instrType = instrRoot->nodeData.instruction->instruction;
+	instrRoot->nodeData.instruction->instrType = R_TYPE;
 
 	// Instructions are in `xd, xs, xr` form
 
@@ -325,6 +334,8 @@ void handleR(Parser* parser, Node* instrRoot) {
 	instrRoot->nodeData.instruction->data.rType.xs = xsNode;
 	instrRoot->nodeData.instruction->data.rType.xr = xrNode;
 
+	instrRoot->nodeData.instruction->instrType = R_TYPE;
+
 	parser->currentTokenIndex++;
 }
 
@@ -360,7 +371,9 @@ static Node* parseMemberAccess(Parser* parser) {
 		emitError(ERR_NOT_ALLOWED, &linedata, "Field access is not allowed. Enable the feature to use it.");
 	}
 
-	
+	// TODO: Actually parse member access
+	emitWarning(WARN_UNIMPLEMENTED, &linedata, "Member access/dereference parsing is not yet implemented.");
+	return NULL;
 }
 
 void handleM(Parser* parser, Node* instrRoot) {
@@ -388,6 +401,9 @@ void handleM(Parser* parser, Node* instrRoot) {
 	// Also, for `ld reg, imm`, if the immediate/address is close enough to the LP, it does an IR-relative load
 
 	enum Instructions instrType = instrRoot->nodeData.instruction->instruction;
+
+	instrRoot->nodeData.instruction->instrType = M_TYPE;
+	// detail("Instruction type: %d (from %p)", instrType, &instrRoot->nodeData.instruction->instruction);
 
 	/**
 	 * Trees:
@@ -486,6 +502,8 @@ void handleM(Parser* parser, Node* instrRoot) {
 			instrRoot->nodeData.instruction->data.mType.xi = NULL;
 			instrRoot->nodeData.instruction->data.mType.imm = immExprRoot;
 
+			instrRoot->nodeData.instruction->instrType = M_TYPE;
+
 			parser->currentTokenIndex++;
 			nextToken = parser->tokens[parser->currentTokenIndex];
 			if (nextToken->type != TK_NEWLINE) emitError(ERR_INVALID_SYNTAX, &linedata, "Expected newline after `]`, got `%s`.", nextToken->lexeme);
@@ -506,8 +524,11 @@ void handleM(Parser* parser, Node* instrRoot) {
 				Node* xiNode = initASTNode(AST_LEAF, ND_REGISTER, nextToken, instrRoot);
 				RegNode* xiData = initRegisterNode(regNum);
 				setNodeData(xiNode, xiData, ND_REGISTER);
+
 				instrRoot->nodeData.instruction->data.mType.xi = xiNode;
 				instrRoot->nodeData.instruction->data.mType.imm = NULL;
+
+				instrRoot->nodeData.instruction->instrType = M_TYPE;
 
 				parser->currentTokenIndex++;
 				nextToken = parser->tokens[parser->currentTokenIndex];
@@ -518,6 +539,9 @@ void handleM(Parser* parser, Node* instrRoot) {
 				// mem-op reg, [reg]
 				instrRoot->nodeData.instruction->data.mType.xi = NULL;
 				instrRoot->nodeData.instruction->data.mType.imm = NULL;
+
+				instrRoot->nodeData.instruction->instrType = M_TYPE;
+
 				parser->currentTokenIndex++; // Consume the newline
 				return;
 			}
@@ -548,17 +572,22 @@ void handleM(Parser* parser, Node* instrRoot) {
 
 			immExprRoot = parseMemberAccess(parser);
 		} else immExprRoot = parseExpression(parser);
+		immExprRoot->parent = instrRoot;
 
 		// Since `imm` is most likely 32 bits, it doesn't fit in the instruction
 		// This means to either to IR-relative or split
 		// The expression will not be evaluated until later so until then it will be known
 		// For know, leave as is, and when it is evaluated, figure out if it can be IR-relative or needs to be split
+		// This is to be done before codegen but after the entire file has been parsed
+		// Use the linked list in parser to keep track of these instructions
 
 		instrRoot->nodeData.instruction->data.mType.xb = NULL;
 		instrRoot->nodeData.instruction->data.mType.xi = NULL;
 		instrRoot->nodeData.instruction->data.mType.imm = immExprRoot;
 
-		immExprRoot->parent = instrRoot;
+		instrRoot->nodeData.instruction->instrType = M_TYPE;
+
+		addLD(parser, instrRoot);
 
 		nextToken = parser->tokens[parser->currentTokenIndex];
 		if (nextToken->type != TK_NEWLINE) emitError(ERR_INVALID_SYNTAX, &linedata, "Expected newline after immediate expression, got `%s`.", nextToken->lexeme);
@@ -571,17 +600,20 @@ void handleM(Parser* parser, Node* instrRoot) {
 		Node* literalNode = initASTNode(AST_INTERNAL, ND_OPERATOR, nextToken, instrRoot);
 		OpNode* literalData = initOperatorNode();
 		setNodeData(literalNode, literalData, ND_OPERATOR);
-		instrRoot->nodeData.instruction->data.mType.imm = literalNode;
 		
 		parser->currentTokenIndex++;
 		nextToken = parser->tokens[parser->currentTokenIndex];
 		// Need to check first????
 		Node* immExprRoot = parseExpression(parser);
 		immExprRoot->parent = literalNode;
-
+		
 		instrRoot->nodeData.instruction->data.mType.xb = NULL;
 		instrRoot->nodeData.instruction->data.mType.xi = NULL;
 		instrRoot->nodeData.instruction->data.mType.imm = literalNode;
+
+		instrRoot->nodeData.instruction->instrType = M_TYPE;
+
+		addLD(parser, instrRoot);
 
 		nextToken = parser->tokens[parser->currentTokenIndex];
 		if (nextToken->type != TK_NEWLINE) emitError(ERR_INVALID_SYNTAX, &linedata, "Expected newline after immediate expression, got `%s`.", nextToken->lexeme);
@@ -604,6 +636,7 @@ void handleBi(Parser* parser, Node* instrRoot) {
 	log("Handling Bi instruction at line %d", instrToken->linenum);
 
 	// enum Instructions instrType = instrRoot->nodeData.instruction->instruction;
+	instrRoot->nodeData.instruction->instrType = BI_TYPE;
 
 	// Instructions are in `label` form, that it, the only operand needs to be a single label (not that not a number but an identifier)
 
@@ -647,6 +680,8 @@ void handleBi(Parser* parser, Node* instrRoot) {
 
 	instrRoot->nodeData.instruction->data.biType.offset = symbNode;
 
+	instrRoot->nodeData.instruction->instrType = BI_TYPE;
+
 	// Make sure nothing is left
 	parser->currentTokenIndex++;
 	nextToken = parser->tokens[parser->currentTokenIndex];
@@ -668,6 +703,7 @@ void handleBu(Parser* parser, Node* instrRoot) {
 	// Instructions are in the form of `xd`, except for ret, although ret is an alias of `ubr lr`
 
 	enum Instructions instrType = instrRoot->nodeData.instruction->instruction;
+	instrRoot->nodeData.instruction->instrType = BU_TYPE;
 
 	int regNum = 0;
 
@@ -685,6 +721,7 @@ void handleBu(Parser* parser, Node* instrRoot) {
 		regNum = 28; // lr
 		xdToken = NULL; // Since ret does not have an explicit operand, set xdToken to NULL
 		// Let the code generator take care of the implicit register when it detects that it is NULL
+		// Future me: code generator does not look at the token, only the node data, so it is fine
 	}
 
 	Node* xdNode = initASTNode(AST_LEAF, ND_REGISTER, xdToken, instrRoot);
@@ -692,6 +729,8 @@ void handleBu(Parser* parser, Node* instrRoot) {
 	setNodeData(xdNode, xdData, ND_REGISTER);
 
 	instrRoot->nodeData.instruction->data.buType.xd = xdNode;
+
+	instrRoot->nodeData.instruction->instrType = BU_TYPE;
 
 	// Regardless if instruction was ubr or ret, nextToken is after the operand or instruction
 	if (nextToken->type != TK_NEWLINE) emitError(ERR_INVALID_SYNTAX, &linedata, "Expected newline after operand of `%s` instruction, got `%s`.", instrToken->lexeme, nextToken->lexeme);
@@ -708,6 +747,8 @@ void handleBc(Parser* parser, Node* instrRoot) {
 	};
 
 	log("Handling Bc instruction at line %d", instrToken->linenum);
+
+	instrRoot->nodeData.instruction->instrType = BC_TYPE;
 
 	// Instructions are in `label` form, that is, it is near the same as Bi except that it has a condition code
 
@@ -765,6 +806,8 @@ void handleBc(Parser* parser, Node* instrRoot) {
 
 	instrRoot->nodeData.instruction->data.bcType.offset = symbNode;
 
+	instrRoot->nodeData.instruction->instrType = BC_TYPE;
+
 	// Make sure nothing is left
 	parser->currentTokenIndex++;
 	nextToken = parser->tokens[parser->currentTokenIndex];
@@ -789,6 +832,7 @@ void handleS(Parser* parser, Node* instrRoot) {
 	// The rest don't use operands
 
 	enum Instructions instrType = instrRoot->nodeData.instruction->instruction;
+	instrRoot->nodeData.instruction->instrType = S_TYPE;
 
 	parser->currentTokenIndex++;
 	Token* nextToken = parser->tokens[parser->currentTokenIndex];
@@ -810,6 +854,8 @@ void handleS(Parser* parser, Node* instrRoot) {
 
 	if (instrType == MVCSTR) instrRoot->nodeData.instruction->data.sType.xs = xs_xdNode;
 	else instrRoot->nodeData.instruction->data.sType.xd = xs_xdNode;
+
+	instrRoot->nodeData.instruction->instrType = S_TYPE;
 
 	parser->currentTokenIndex++;
 	nextToken = parser->tokens[parser->currentTokenIndex];
