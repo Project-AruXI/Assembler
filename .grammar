@@ -1,0 +1,60 @@
+program             ::= { line };
+line                ::= [ label ], [ directive | instruction | macro_call ], [ comment ], NEWLINE;
+
+char                ::= letter | digit | symbol | "_" | " ";                           (* Any single character *) 
+
+label               ::= identifier, ":";
+comment             ::= "%",char;                      (* Inline or full-line *)
+NEWLINE             ::= "\n" | "\r\n";
+
+directive           ::= ".",directive_name, [ directive_args ];
+directive_name      ::= "glob" | "set" | "extern" | "data" | "size" | "byte" | "word"
+                     | "fill" | "zero" | "const" | "string" | "bss" | "text"
+                     | "type" | "def" | "sizeof" | "offset" | "typeinfo";
+
+directive_args      ::= expression_list | struct_body | string_literal;
+expression_list     ::= expression, { ",", expression };
+string_literal      ::= '"', { char - '"' }, '"';
+
+instruction         ::= mnemonic, operand_list;
+mnemonic            ::= identifier;                  (* e.g. ld, mv, add, call, ret *)
+operand_list        ::= operand, { ",", operand };
+
+operand             ::= register | immediate | memory | label_ref | macro_param | expression;
+register            ::= "x", number | "sp" | "ir" | "v", number | "f", number
+                     | "a", number | "c", number | "s", number | "lr" | "xb" | "xz" | "xr";
+immediate           ::= "#", number | "=", expression;
+memory              ::= "[", register, [ ",", expression ], "]";
+label_ref           ::= identifier;
+macro_param         ::= "@",identifier;
+
+expression          ::= operand, [ operator, operand ];
+operator            ::= "+" | "-" | "*" | "/" | "|" | "&" | "<<" | ">>" | "^";
+
+identifier          ::= [a-zA-Z_],{a-zA-Z0-9_};       (* Includes register aliases *)
+digit               ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9";
+number              ::= digit, { digit } | "0x", hex_digits;
+hex_digits          ::= { "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "a" | "b" | "c" | "d" | "e" | "f" | "A" | "B" | "C" | "D" | "E" | "F" }+;
+
+macro_call          ::= "@",identifier;
+
+(* .adecl grammar *)
+adecl_program       ::= { adecl_line };
+adecl_line          ::= adecl_directive | macro_definition | conditional_block | print_directive | comment;
+
+adecl_directive     ::= ".type",identifier, ",", type_expr
+                     | ".def", identifier, struct_body;
+
+type_expr           ::= "$", identifier, { ".", identifier };
+
+struct_body         ::= "{", { struct_field }, "}";
+struct_field        ::= identifier, ":", number, "." 
+                     | identifier, "::", identifier, ".";
+
+(* macro_definition    ::= "!macro" identifier [ macro_params ] macro_body;
+macro_params        ::= identifier { "," identifier };
+macro_body          ::= "{" { instruction | macro_call } "}"; *)
+
+conditional_block   ::= "!if", identifier, "{", { adecl_line }, "}";
+
+print_directive     ::= "!out", ".", ("sizeof" | "offset" | "typeinfo"), expression;
