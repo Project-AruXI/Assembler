@@ -9,6 +9,10 @@
 #include "lexer.h"
 #include "config.h"
 #include "parser.h"
+#include "codegen.h"
+#ifdef _WIN32
+#include "getline.h"
+#endif
 
 Config config;
 
@@ -139,17 +143,21 @@ int main(int argc, char const* argv[]) {
 	rlog("\n");
 
 	displaySymbolTable(symbolTable);
+	CodeGen* codegen = initCodeGenerator(sectionTable, symbolTable);
+	gencode(parser, codegen);
+	writeBinary(codegen, config.outbin);
+
 	displaySectionTable(sectionTable);
 	displayStructTable(structTable);
 	displayDataTable(dataTable);
-
-
+	displayCodeGen(codegen);
 
 	deinitLexer(lexer);
 	deinitParser(parser);
 	deinitStructTable(structTable);
 	deinitSectionTable(sectionTable);
 	deinitSymbolTable(symbolTable);
+	deinitCodeGenerator(codegen);
 
 	return 0;
 }
