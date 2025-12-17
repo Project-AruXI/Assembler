@@ -65,7 +65,32 @@ static AOEFFSectHeader* generateSectionHeaders(SectionTable* sectTable) {
 	if (!headers) emitError(ERR_MEM, NULL, "Failed to allocate memory for section headers.");
 
 	// Offset where all sections start at, basically the end of the string table
-	// uint32_t baseOffset = 
+	uint32_t baseOffset = sizeof(AOEFFheader) + (sizeof(AOEFFSectHeader) * sectEntries);
+
+	for (int i = 0, hdrIdx = 0; i < 6; i++) {
+		if (sectTable->entries[i].size == 0) continue;
+
+		headers[hdrIdx] = (AOEFFSectHeader) {
+			.shSectName = {0},
+			.shSectOff = baseOffset,
+			.shSectSize = sectTable->entries[i].size,
+			.shSectRel = SE_SECT_UNDEF // No relocations for now
+		};
+		// Set section name
+		const char* sectName = "";
+		switch (i) {
+			case DATA_SECT_N: sectName = ".data"; break;
+			case CONST_SECT_N: sectName = ".const"; break;
+			case BSS_SECT_N: sectName = ".bss"; break;
+			case TEXT_SECT_N: sectName = ".text"; break;
+			case EVT_SECT_N: sectName = ".evt"; break;
+			case IVT_SECT_N: sectName = ".ivt"; break;
+		}
+		strncpy(headers[hdrIdx].shSectName, sectName, 8);
+
+		baseOffset += sectTable->entries[i].size;
+		hdrIdx++;
+	}
 
 	return headers;
 }
@@ -127,6 +152,8 @@ static AOEFFSymbEntry* generateSymbolTable(SymbolTable* symbTable, uint32_t strT
 }
 
 void writeBinary(CodeGen* codegen, const char* filename) {
+	initScope("writeBinary");
+
 	FILE* outfile = fopen(filename, "wb");
 	if (!outfile) emitError(ERR_IO, NULL, "Failed to open output file %s for writing.", filename);
 
@@ -185,11 +212,15 @@ void writeBinary(CodeGen* codegen, const char* filename) {
 	// Write the payload
 	for (int i = 0; i < 6; i++) {
 		if (codegen->sectionTable->entries[i].size == 0) continue;
+		if (i == BSS_SECT_N) continue; // Ignore bss
 		if (i == DATA_SECT_N) {
+			log("Writing data section...");
 			fwrite(codegen->data.data, sizeof(uint8_t), codegen->data.dataCount, outfile);
 		} else if (i == CONST_SECT_N) {
+			log("Writing const section...");
 			fwrite(codegen->consts.data, sizeof(uint8_t), codegen->consts.dataCount, outfile);
 		} else if (i == TEXT_SECT_N) {
+			log("Writing text section...");
 			fwrite(codegen->text.instructions, sizeof(uint32_t), codegen->text.instructionCount, outfile);
 		} else {
 			emitError(ERR_INTERNAL, NULL, "Section %d has data but is not handled in writeBinary.", i);

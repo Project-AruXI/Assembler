@@ -421,6 +421,11 @@ void parse(Parser* parser) {
 
 		current = current->next;
 	}
+
+	// Set each section's size to be the LP
+	for (int i = 0; i < 6; i++) {
+		parser->sectionTable->entries[i].size = parser->sectionTable->entries[i].lp;
+	}
 }
 
 void showParserConfig(Parser* parser) {

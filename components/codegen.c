@@ -199,7 +199,7 @@ static uint32_t encodeM(InstrNode* data, SymbolTable* symbTable) {
 #else
 	uint8_t opcode = 0b0000000;
 #endif
-	
+
 	switch (data->instruction) {
 		case LD: opcode = 0b00010100; break;
 		case LDB: opcode = 0b00110100; break;
@@ -488,133 +488,6 @@ static void genBytes(CodeGen* codegen, data_entry_t* entry, data_entry_t** entri
 		(*codegenDataCount)++;
 		log("    Wrote byte 0x%02X to %s section in codegen.", byteValue, isData ? "data" : "const");
 	}
-}
-
-
-static void _gendata(CodeGen* codegen, data_entry_t** entries, int* _entriesSize, int* _entriesCapacity, int* _idx) {
-	/*
-	// Depending on the type of data entry, write to the appropriate section
-	switch (dataEntry->type) {
-		case BYTES_TYPE:
-			// Write to data or const section depending on which section is active
-			if (parser->sectionTable->activeSection == DATA_SECT_N) {
-				// Data section
-				for (int i = 0; i < dataEntry->size; i++) {
-					if (codegen->data.dataCount == codegen->data.dataCapacity) {
-						codegen->data.dataCapacity *= 2;
-						uint8_t* temp = (uint8_t*) realloc(codegen->data.data, sizeof(uint8_t) * codegen->data.dataCapacity);
-						if (!temp) emitError(ERR_MEM, NULL, "Failed to reallocate memory for data section.");
-						codegen->data.data = temp;
-					}
-					// Each expression in the data entry is a byte
-					Node* byteExpr = dataEntry->data[i];
-					if (byteExpr->nodeType != ND_NUMBER) {
-						emitError(ERR_INTERNAL, NULL, "Data entry expression is not a number node.");
-						continue;
-					}
-					NumNode* numNode = byteExpr->nodeData.number;
-					if (numNode->type != NTYPE_INT8 && numNode->type != NTYPE_INT16 && numNode->type != NTYPE_INT32) {
-						emitError(ERR_INTERNAL, NULL, "Data entry number node is not an integer type.");
-						continue;
-					}
-					int8_t byteValue = (int8_t) numNode->value.int32Value; // Just take the lowest byte
-					codegen->data.data[codegen->data.dataCount++] = byteValue;
-					log("    Wrote byte 0x%02X to data section.", (uint8_t) byteValue);
-				}
-			} else if (parser->sectionTable->activeSection == CONST_SECT_N) {
-				// Const section
-				for (int i = 0; i < dataEntry->size; i++) {
-					if (codegen->consts.dataCount == codegen->consts.dataCapacity) {
-						codegen->consts.dataCapacity *= 2;
-						uint8_t* temp = (uint8_t*) realloc(codegen->consts.data, sizeof(uint8_t) * codegen->consts.dataCapacity);
-						if (!temp) emitError(ERR_MEM, NULL, "Failed to reallocate memory for const section.");
-						codegen->consts.data = temp;
-					}
-					// Each expression in the data entry is a byte
-					Node* byteExpr = dataEntry->data[i];
-					if (byteExpr->nodeType != ND_NUMBER) {
-						emitError(ERR_INTERNAL, NULL, "Data entry expression is not a number node.");
-						continue;
-					}
-					NumNode* numNode = byteExpr->nodeData.number;
-					if (numNode->type != NTYPE_INT8 && numNode->type != NTYPE_INT16 && numNode->type != NTYPE_INT32) {
-						emitError(ERR_INTERNAL, NULL, "Data entry number node is not an integer type.");
-						continue;
-					}
-					int8_t byteValue = (int8_t) numNode->value.int32Value; // Just take the lowest byte
-					codegen->consts.data[codegen->consts.dataCount++] = byteValue;
-					log("    Wrote byte 0x%02X to const section.", (uint8_t) byteValue);
-				}
-			} else {
-				emitError(ERR_INTERNAL, NULL, "Data entry in invalid section %d.", parser->sectionTable->activeSection);
-			}
-			break;
-		case FLOATS_TYPE:
-			// Write to data or const section depending on which section is active
-			if (parser->sectionTable->activeSection == DATA_SECT_N) {
-				// Data section
-				for (int i = 0; i < dataEntry->size / 4; i++) {
-					if (codegen->data.dataCount + 4 > codegen->data.dataCapacity) {
-						codegen->data.dataCapacity *= 2;
-						uint8_t* temp = (uint8_t*) realloc(codegen->data.data, sizeof(uint8_t) * codegen->data.dataCapacity);
-						if (!temp) emitError(ERR_MEM, NULL, "Failed to reallocate memory for data section.");
-						codegen->data.data = temp;
-					}
-					// Each expression in the data entry is a float
-					Node* floatExpr = dataEntry->data[i];
-					if (floatExpr->nodeType != ND_NUMBER) {
-						emitError(ERR_INTERNAL, NULL, "Data entry expression is not a number node.");
-						continue;
-					}
-					NumNode* numNode = floatExpr->nodeData.number;
-					if (numNode->type != NTYPE_FLOAT) {
-						emitError(ERR_INTERNAL, NULL, "Data entry number node is not a float type.");
-						continue;
-					}
-					float floatValue = numNode->value.floatValue;
-					// Write the float as 4 bytes in little-endian order
-					uint8_t* floatBytes = (uint8_t*) &floatValue;
-					for (int b = 0; b < 4; b++) {
-						codegen->data.data[codegen->data.dataCount++] = floatBytes[b];
-					}
-					log("    Wrote float %f to data section.", floatValue);
-				}
-			} else if (parser->sectionTable->activeSection == CONST_SECT_N) {
-				// Const section
-				for (int i = 0; i < dataEntry->size / 4; i++) {
-					if (codegen->consts.dataCount + 4 > codegen->consts.dataCapacity) {
-						codegen->consts.dataCapacity *= 2;
-						uint8_t* temp = (uint8_t*) realloc(codegen->consts.data, sizeof(uint8_t) * codegen->consts.dataCapacity);
-						if (!temp) emitError(ERR_MEM, NULL, "Failed to reallocate memory for const section.");
-						codegen->consts.data = temp;
-					}
-					// Each expression in the data entry is a float
-					Node* floatExpr = dataEntry->data[i];
-					if (floatExpr->nodeType != ND_NUMBER) {	
-						emitError(ERR_INTERNAL, NULL, "Data entry expression is not a number node.");
-						continue;
-					}
-					NumNode* numNode = floatExpr->nodeData.number;
-					if (numNode->type != NTYPE_FLOAT) {
-						emitError(ERR_INTERNAL, NULL, "Data entry number node is not a float type.");
-						continue;
-					}
-					float floatValue = numNode->value.floatValue;
-					// Write the float as 4 bytes in little-endian order
-					uint8_t* floatBytes = (uint8_t*) &floatValue;
-					for (int b = 0; b < 4; b++) {
-						codegen->consts.data[codegen->consts.dataCount++] = floatBytes[b];
-					}
-					log("    Wrote float %f to const section.", floatValue);
-				}
-			} else {
-				emitError(ERR_INTERNAL, NULL, "Data entry in invalid section %d.", parser->sectionTable->activeSection);
-			}
-			break;
-		default:
-			emitError(ERR_INTERNAL, NULL, "Data entry has unknown type %d.", dataEntry->type);
-			break;
-	}*/
 }
 
 static void gendata(Parser* parser, Node* ast, CodeGen* codegen, int* dataIdx, int* constIdx) {
