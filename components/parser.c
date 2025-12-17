@@ -96,6 +96,8 @@ static void parseLabel(Parser* parser) {
 	} else if (existingEntry) {
 		// Update the existing entry to be defined now
 		SET_DEFINED(existingEntry->flags);
+		// And the section
+		existingEntry->flags = SET_SECTION(existingEntry->flags, parser->sectionTable->activeSection);
 		existingEntry->linenum = labelToken->linenum;
 		existingEntry->source = labelToken->sstring; // Maybe have the entry use its own copy of SString
 		existingEntry->value.val = parser->sectionTable->entries[parser->sectionTable->activeSection].lp;

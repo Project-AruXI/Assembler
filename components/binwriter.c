@@ -98,7 +98,6 @@ static AOEFFSectHeader* generateSectionHeaders(SectionTable* sectTable) {
 static AOEFFSymbEntry* generateSymbolTable(SymbolTable* symbTable, uint32_t strTabSize, char** outStrTab) {
 	uint32_t symbTableSize = symbTable->size;
 	// Including empty ending symbol
-	// Great assumption that LP is not stored as a symbol
 	symbTableSize++;
 
 	AOEFFSymbEntry* entries = (AOEFFSymbEntry*) malloc(sizeof(AOEFFSymbEntry) * symbTableSize);
@@ -138,7 +137,7 @@ static AOEFFSymbEntry* generateSymbolTable(SymbolTable* symbTable, uint32_t strT
 	nstrncat(stStrs, "END_AOEFF_STRS\0", 16);
 
 	// Add end blank entry
-	entries[symbTable->size] = (AOEFFSymbEntry) {
+	entries[symbTableSize-1] = (AOEFFSymbEntry) {
 		.seSymbName = 0,
 		.seSymbSize = 0x00000000,
 		.seSymbVal = 0x00000000,
