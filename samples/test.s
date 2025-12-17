@@ -18,9 +18,9 @@
 
 .text
   _init:
-    %ld x0, =helloWorld
+    ld x0, =helloWorld
     ldb x1, [x0]
     add x1, x1, #1
-    %ld x2, =buffer
+    ld x2, =buffer
     strb x1, [x2]
     ret
