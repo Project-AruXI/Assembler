@@ -221,6 +221,12 @@ bool evaluateExpression(Node* exprRoot, SymbolTable* symbTable) {
 				// If symbol is defined as value, propagate
 				if (GET_DEFINED(entry->flags) && GET_EXPRESSION(entry->flags) == E_VAL) {
 					symbData->value = entry->value.val;
+					
+					// Get the smallest type
+					if (entry->value.val <= 0xFF) symbData->type = NTYPE_INT8;
+					else if (entry->value.val <= 0xFFFF) symbData->type = NTYPE_INT16;
+					else symbData->type = NTYPE_INT32;
+
 					return true;
 				} else if (GET_EXPRESSION(entry->flags) == E_EXPR && entry->value.expr) {
 					// Evaluate the symbol's expression
@@ -228,17 +234,45 @@ bool evaluateExpression(Node* exprRoot, SymbolTable* symbTable) {
 						// After evaluation, update symbol value
 						// Assume result is in root node of entry->value.expr
 						Node* resNode = entry->value.expr;
+
+						NumType resType;
+						uint32_t resValue;
+
 						if (resNode->nodeType == ND_NUMBER) {
 							NumNode* numData = resNode->nodeData.number;
-							symbData->value = numData->value.int32Value; // Use int32 for now
-							// Optionally update entry to hold value
-							// updateSymbolEntry(entry, SET_DEFINED(CLR_EXPRESSION(entry->flags)), symbData->value);
-							entry->value.expr = NULL;
-							entry->value.val = symbData->value;
-							SET_DEFINED(entry->flags);
-							CLR_EXPRESSION(entry->flags);
-							return true;
-						} 
+							resType = numData->type;
+							switch (resType) {
+								case NTYPE_INT8: resValue = (uint32_t) numData->value.int8Value; break;
+								case NTYPE_INT16: resValue = (uint32_t) numData->value.int16Value; break;
+								case NTYPE_INT32: resValue = (uint32_t) numData->value.int32Value; break;
+								case NTYPE_UINT32: resValue = numData->value.uint32Value; break;
+								case NTYPE_FLOAT:
+									emitError(ERR_INVALID_EXPRESSION, NULL, "Symbol expression evaluated to float, which is not supported for symbol values.");
+									return false;
+								default:
+									emitError(ERR_INTERNAL, NULL, "Unknown numeric type in symbol expression evaluation.");
+									return false;
+							}
+						} else if (resNode->nodeType == ND_SYMB) {
+							SymbNode* resSymb = resNode->nodeData.symbol;
+							resValue = resSymb->value;
+							resType = resSymb->type;
+						} else if (resNode->nodeType == ND_OPERATOR) {
+							OpNode* resOp = resNode->nodeData.operator;
+							resValue = resOp->value;
+							resType = resOp->valueType;
+						} else emitError(ERR_INTERNAL, NULL, "Unexpected node type in symbol expression evaluation.");
+
+						symbData->value = resValue;
+						symbData->type = resType;
+
+						// Optionally update entry to hold value
+						// updateSymbolEntry(entry, SET_DEFINED(CLR_EXPRESSION(entry->flags)), symbData->value);
+						entry->value.expr = NULL;
+						entry->value.val = symbData->value;
+						SET_DEFINED(entry->flags);
+						CLR_EXPRESSION(entry->flags);
+						return true;
 					}
 				}
 				// Symbol not defined
@@ -262,86 +296,88 @@ bool evaluateExpression(Node* exprRoot, SymbolTable* symbTable) {
 					emitError(ERR_INTERNAL, NULL, "Operator node has neither unary nor binary operands.");
 				}
 				// Get operand values
-					// Type promotion and smallest type selection
-					NumType ltype = NTYPE_INT32, rtype = NTYPE_INT32, resultType = NTYPE_INT32;
-					int64_t lval = 0, rval = 0, result = 0;
-					float lfval = 0.0f, rfval = 0.0f, fres = 0.0f;
-					bool isFloat = false;
-					if (left && left->nodeType == ND_NUMBER) {
-						NumNode* lnum = (NumNode*)left->nodeData.number;
-						ltype = lnum->type;
-						switch (ltype) {
-							case NTYPE_FLOAT: lfval = lnum->value.floatValue; isFloat = true; break;
-							case NTYPE_INT8: lval = lnum->value.int8Value; break;
-							case NTYPE_INT16: lval = lnum->value.int16Value; break;
-							case NTYPE_INT32: lval = lnum->value.int32Value; break;
-							case NTYPE_UINT32: lval = lnum->value.int32Value; break;
-							default: lval = lnum->value.int32Value; break;
-						}
-					} else if (left && left->nodeType == ND_SYMB) {
-						SymbNode* lsymb = (SymbNode*)left->nodeData.symbol;
-						lval = lsymb->value;
+				// Type promotion and smallest type selection
+				NumType ltype = NTYPE_INT32, rtype = NTYPE_INT32, resultType = NTYPE_INT32;
+				int64_t lval = 0, rval = 0, result = 0;
+				float lfval = 0.0f, rfval = 0.0f, fres = 0.0f;
+				bool isFloat = false;
+				if (left && left->nodeType == ND_NUMBER) {
+					NumNode* lnum = (NumNode*)left->nodeData.number;
+					ltype = lnum->type;
+					switch (ltype) {
+						case NTYPE_FLOAT: lfval = lnum->value.floatValue; isFloat = true; break;
+						case NTYPE_INT8: lval = lnum->value.int8Value; break;
+						case NTYPE_INT16: lval = lnum->value.int16Value; break;
+						case NTYPE_INT32: lval = lnum->value.int32Value; break;
+						case NTYPE_UINT32: lval = lnum->value.int32Value; break;
+						default: lval = lnum->value.int32Value; break;
 					}
-					if (right && right->nodeType == ND_NUMBER) {
-						NumNode* rnum = (NumNode*)right->nodeData.number;
-						rtype = rnum->type;
-						switch (rtype) {
-							case NTYPE_FLOAT: rfval = rnum->value.floatValue; isFloat = true; break;
-							case NTYPE_INT8: rval = rnum->value.int8Value; break;
-							case NTYPE_INT16: rval = rnum->value.int16Value; break;
-							case NTYPE_INT32: rval = rnum->value.int32Value; break;
-							case NTYPE_UINT32: rval = rnum->value.int32Value; break;
-							default: rval = rnum->value.int32Value; break;
-						}
-					} else if (right && right->nodeType == ND_SYMB) {
-						SymbNode* rsymb = (SymbNode*)right->nodeData.symbol;
-						rval = rsymb->value;
+				} else if (left && left->nodeType == ND_SYMB) {
+					SymbNode* lsymb = (SymbNode*)left->nodeData.symbol;
+					lval = lsymb->value;
+					ltype = lsymb->type;
+				}
+				if (right && right->nodeType == ND_NUMBER) {
+					NumNode* rnum = (NumNode*)right->nodeData.number;
+					rtype = rnum->type;
+					switch (rtype) {
+						case NTYPE_FLOAT: rfval = rnum->value.floatValue; isFloat = true; break;
+						case NTYPE_INT8: rval = rnum->value.int8Value; break;
+						case NTYPE_INT16: rval = rnum->value.int16Value; break;
+						case NTYPE_INT32: rval = rnum->value.int32Value; break;
+						case NTYPE_UINT32: rval = rnum->value.int32Value; break;
+						default: rval = rnum->value.int32Value; break;
 					}
-					// Promote type if needed
-					if (isFloat || ltype == NTYPE_FLOAT || rtype == NTYPE_FLOAT) {
-						resultType = NTYPE_FLOAT;
-					} else if (ltype > rtype) {
-						resultType = ltype;
-					} else {
-						resultType = rtype;
+				} else if (right && right->nodeType == ND_SYMB) {
+					SymbNode* rsymb = (SymbNode*)right->nodeData.symbol;
+					rval = rsymb->value;
+					rtype = rsymb->type;
+				}
+				// Promote type if needed
+				if (isFloat || ltype == NTYPE_FLOAT || rtype == NTYPE_FLOAT) {
+					resultType = NTYPE_FLOAT;
+				} else if (ltype > rtype) {
+					resultType = ltype;
+				} else {
+					resultType = rtype;
+				}
+				// Apply operator
+				if (resultType == NTYPE_FLOAT) {
+					switch (exprRoot->token->type) {
+						case TK_PLUS: fres = lfval + rfval; break;
+						case TK_MINUS:
+							if (right) fres = lfval - rfval;
+							else fres = -lfval;
+							break;
+						case TK_ASTERISK: fres = lfval * rfval; break;
+						case TK_DIVIDE: fres = rfval ? lfval / rfval : 0.0f; break;
+						default: emitError(ERR_INVALID_EXPRESSION, NULL, "Invalid operator for float expression.");
 					}
-					// Apply operator
-					if (resultType == NTYPE_FLOAT) {
-						switch (exprRoot->token->type) {
-							case TK_PLUS: fres = lfval + rfval; break;
-							case TK_MINUS:
-								if (right) fres = lfval - rfval;
-								else fres = -lfval;
-								break;
-							case TK_ASTERISK: fres = lfval * rfval; break;
-							case TK_DIVIDE: fres = rfval ? lfval / rfval : 0.0f; break;
-							default: emitError(ERR_INVALID_EXPRESSION, NULL, "Invalid operator for float expression.");
-						}
-						opData->valueType = NTYPE_FLOAT;
-						opData->value = 0; // Not used for float
-					} else {
-						switch (exprRoot->token->type) {
-							case TK_PLUS: result = lval + rval; break;
-							case TK_MINUS:
-								if (right) result = lval - rval;
-								else result = -lval;
-								break;
-							case TK_ASTERISK: result = lval * rval; break;
-							case TK_DIVIDE: result = rval ? lval / rval : 0; break;
-							case TK_BITWISE_AND: result = lval & rval; break;
-							case TK_BITWISE_OR: result = lval | rval; break;
-							case TK_BITWISE_XOR: result = lval ^ rval; break;
-							case TK_BITWISE_NOT: result = ~lval; break;
-							case TK_BITWISE_SL: result = lval << rval; break;
-							case TK_BITWISE_SR: result = lval >> rval; break;
-							default: emitError(ERR_INVALID_EXPRESSION, NULL, "Invalid operator for integer expression.");
-						}
-						opData->valueType = resultType;
-						opData->value = (uint32_t)result;
+					opData->valueType = NTYPE_FLOAT;
+					opData->value = 0; // Not used for float
+				} else {
+					switch (exprRoot->token->type) {
+						case TK_PLUS: result = lval + rval; break;
+						case TK_MINUS:
+							if (right) result = lval - rval;
+							else result = -lval;
+							break;
+						case TK_ASTERISK: result = lval * rval; break;
+						case TK_DIVIDE: result = rval ? lval / rval : 0; break;
+						case TK_BITWISE_AND: result = lval & rval; break;
+						case TK_BITWISE_OR: result = lval | rval; break;
+						case TK_BITWISE_XOR: result = lval ^ rval; break;
+						case TK_BITWISE_NOT: result = ~lval; break;
+						case TK_BITWISE_SL: result = lval << rval; break;
+						case TK_BITWISE_SR: result = lval >> rval; break;
+						default: emitError(ERR_INVALID_EXPRESSION, NULL, "Invalid operator for integer expression.");
 					}
-					// Propagate result to root node
-					// Optionally, set the result in a new NumNode at the root if needed
-					return true;
+					opData->valueType = resultType;
+					opData->value = (uint32_t)result;
+				}
+				// Propagate result to root node
+				// Optionally, set the result in a new NumNode at the root if needed
+				return true;
 			}
 			default: emitError(ERR_INTERNAL, NULL, "Invalid node type in expression evaluation.");
 		}

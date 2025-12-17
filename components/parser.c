@@ -239,6 +239,8 @@ static void parseDirective(Parser* parser) {
 			break;
 	}
 
+	if (directiveRoot->nodeData.directive) directiveRoot->nodeData.directive->section = parser->sectionTable->activeSection;
+
 	addAst(parser, directiveRoot);
 }
 

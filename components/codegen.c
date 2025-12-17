@@ -35,6 +35,7 @@ void deinitCodeGenerator(CodeGen* codegen) {
 	free(codegen);
 }
 
+
 static uint32_t getImmediateEncoding(Node* immNode, NumType expectedType, SymbolTable* symbTable) {
 	initScope("getImmediateEncoding");
 
@@ -258,7 +259,9 @@ static uint32_t encodeBu(InstrNode* data) {
 	return encoding;
 }
 
+static uint32_t encodeBc(InstrNode* data) {}
 
+static uint32_t encodeBi(InstrNode* data) {}
 
 static uint32_t encodeS(InstrNode* data) {
 	initScope("encodeS");
@@ -324,18 +327,172 @@ static void gentext(Parser* parser, CodeGen* codegen, Node* ast) {
 	codegen->text.instructionCount++;
 }
 
-static void gendata(Parser* parser, CodeGen* codegen, int dataIndex) {
-	initScope("gendata");
-	// TODO
-/*
-	data_entry_t* dataEntry = parser->dataTable.[dataIndex];
-	if (!dataEntry) {
-		emitError(ERR_INTERNAL, NULL, "Data entry at index %d is NULL.", dataIndex);
-		return;
+
+/**
+ * Generates data for a `.string` directive data entry.
+ * @param codegen The codegen struct
+ * @param entry The entry of the directive from the data table
+ * @param entries The array of data entries of either data or const section
+ * @param _entriesSize The size of the entries array
+ * @param _entriesCapacity The capacity of the entries array
+ * @param _idx The current index in the entries array
+ * @param isData Whether the data is to be written to codegen data or const
+ */
+static void genString(CodeGen* codegen, data_entry_t* entry, data_entry_t** entries, int* _entriesSize, int* _entriesCapacity, int* _idx, bool isData) {
+	initScope("genString");
+
+	log("  Generating string data entry at address 0x%08X with size %d bytes.", entry->addr, entry->size);
+
+	Node* stringNode = entry->data[0];
+	// Make sure that the node is indeed a string node
+	if (stringNode->nodeType != ND_STRING) emitError(ERR_INTERNAL, NULL, "Data entry for .string directive does not contain a string node.");
+
+	uint8_t* codegenData= NULL;
+	int* codegenDataCount = NULL;
+	int* codegenDataCapacity = NULL;
+
+	if (isData) {
+		codegenData = codegen->data.data;
+		codegenDataCount = &codegen->data.dataCount;
+		codegenDataCapacity = &codegen->data.dataCapacity;
+	} else {
+		codegenData = codegen->consts.data;
+		codegenDataCount = &codegen->consts.dataCount;
+		codegenDataCapacity = &codegen->consts.dataCapacity;
 	}
 
-	log("  Generating data entry %d of type %d at address 0x%08X with size %d bytes.", dataIndex, dataEntry->type, dataEntry->address, dataEntry->size);
+	// Write the bytes (including null terminator) to the appropriate section
+	for (int i = 0; i < entry->size; i++) {
+		StrNode* strData = stringNode->nodeData.string;
+		if (!strData) emitError(ERR_INTERNAL, NULL, "String node data is NULL.");
 
+		// Ensure enough capacity
+		if (*codegenDataCount == *codegenDataCapacity) {
+			*codegenDataCapacity *= 2;
+			uint8_t* temp = (uint8_t*) realloc(codegenData, sizeof(uint8_t) * (*codegenDataCapacity));
+			if (!temp) emitError(ERR_MEM, NULL, "Failed to reallocate memory for data/const section.");
+			codegenData = temp;
+			if (isData) codegen->data.data = codegenData;
+			else codegen->consts.data = codegenData;
+		}
+
+		uint8_t byteValue = 0x00;
+		if (i < strData->length) byteValue = (uint8_t) strData->value[i]; 
+		else byteValue = 0x00; // Null terminator
+
+		codegenData[*codegenDataCount] = byteValue;
+		(*codegenDataCount)++;
+		log("    Wrote byte 0x%02X to %s section in codegen.", byteValue, isData ? "data" : "const");
+	}
+}
+
+/**
+ * Generates data for a `.bytes` directive data entry.
+ * @param codegen The codegen struct
+ * @param entry The entry of the directive from the data table
+ * @param entries The array of data entries of either data or const section
+ * @param _entriesSize The size of the entries array
+ * @param _entriesCapacity The capacity of the entries array
+ * @param _idx The current index in the entries array
+ * @param isData Whether the data is to be written to codegen data or const
+ */
+static void genBytes(CodeGen* codegen, data_entry_t* entry, data_entry_t** entries, int* _entriesSize, int* _entriesCapacity, int* _idx, bool isData) {
+	initScope("genBytes");
+
+	log("  Generating bytes data entry at address 0x%08X with size %d bytes.", entry->addr, entry->size);
+
+	linedata_ctx linedata = {
+		.linenum = entry->linenum,
+		.source = ssGetString(entry->source)
+	};
+
+	uint8_t* codegenData= NULL;
+	int* codegenDataCount = NULL;
+	int* codegenDataCapacity = NULL;
+
+	if (isData) {
+		codegenData = codegen->data.data;
+		codegenDataCount = &codegen->data.dataCount;
+		codegenDataCapacity = &codegen->data.dataCapacity;
+	} else {
+		codegenData = codegen->consts.data;
+		codegenDataCount = &codegen->consts.dataCount;
+		codegenDataCapacity = &codegen->consts.dataCapacity;
+	}
+
+	// Write the bytes to the appropriate section
+	for (int i = 0; i < entry->size; i++) {
+		// Ensure enough capacity
+		if (*codegenDataCount == *codegenDataCapacity) {
+			*codegenDataCapacity *= 2;
+			uint8_t* temp = (uint8_t*) realloc(codegenData, sizeof(uint8_t) * (*codegenDataCapacity));
+			if (!temp) emitError(ERR_MEM, NULL, "Failed to reallocate memory for data/const section.");
+			codegenData = temp;
+			if (isData) codegen->data.data = codegenData;
+			else codegen->consts.data = codegenData;
+		}
+
+		Node* byteExpr = entry->data[i];
+
+		// Need to evaluate the expression
+		bool evald = evaluateExpression(byteExpr, codegen->symbolTable);
+		if (!evald) emitError(ERR_INVALID_EXPRESSION, &linedata, "Could not evaluate immediate expression.");
+
+		// The byteExpr node can either be a number itself, an operator, or a symbol, so get its value accordingly
+		// HACK: This was autofilled by copilot, might be source of bugs
+		uint8_t byteValue = 0x00;
+		switch (byteExpr->nodeType) {
+			case ND_NUMBER: {
+				NumNode* numData = byteExpr->nodeData.number;
+				if (!numData) emitError(ERR_INTERNAL, NULL, "Number node data is NULL.");
+				// Check type
+				if (numData->type != NTYPE_INT8) { // Oops, do I really need UINT8?????
+					emitError(ERR_INVALID_TYPE, &linedata, "Data entry number node is not of byte type.");
+				}
+				byteValue = (uint8_t) numData->value.int32Value; // Just take the lowest byte
+				break;
+			}
+			case ND_OPERATOR: {
+				OpNode* opData = (OpNode*) byteExpr->nodeData.operator;
+				if (!opData) emitError(ERR_INTERNAL, NULL, "Operator node data is NULL.");
+				// Check type
+				if (opData->valueType != NTYPE_INT8) {
+					emitError(ERR_INVALID_TYPE, &linedata, "Data entry operator node is not of byte type.");
+				}
+				byteValue = (uint8_t) opData->value; // Just take the lowest byte
+				break;
+			}
+			case ND_SYMB: {
+				SymbNode* symbData = (SymbNode*) byteExpr->nodeData.symbol;
+				if (!symbData) emitError(ERR_INTERNAL, NULL, "Symbol node data is NULL.");
+				int idx = symbData->symbTableIndex;
+				if (idx < 0 || idx >= (int)codegen->symbolTable->size) {
+					emitError(ERR_INTERNAL, NULL, "Symbol index %d out of bounds in symbol table.", idx);
+				}
+				symb_entry_t* entry = codegen->symbolTable->entries[idx];
+				if (!entry) {
+					emitError(ERR_INTERNAL, NULL, "Symbol table entry at index %d is NULL.", idx);
+				}
+				// if (!GET_DEFINED(entry->flags)) {
+				// 	// This should have been taken care of by eval????
+				// 	emitError(ERR_UNDEFINED, &linedata, "Symbol `%s` is not defined.", entry->name);
+				// }
+				byteValue = (uint8_t) entry->value.val; // Just take the lowest byte
+				break;
+			}
+			default:
+				emitError(ERR_INTERNAL, &linedata, "Data entry expression is of invalid type.");
+		}
+
+		codegenData[*codegenDataCount] = byteValue;
+		(*codegenDataCount)++;
+		log("    Wrote byte 0x%02X to %s section in codegen.", byteValue, isData ? "data" : "const");
+	}
+}
+
+
+static void _gendata(CodeGen* codegen, data_entry_t** entries, int* _entriesSize, int* _entriesCapacity, int* _idx) {
+	/*
 	// Depending on the type of data entry, write to the appropriate section
 	switch (dataEntry->type) {
 		case BYTES_TYPE:
@@ -460,10 +617,80 @@ static void gendata(Parser* parser, CodeGen* codegen, int dataIndex) {
 	}*/
 }
 
+static void gendata(Parser* parser, Node* ast, CodeGen* codegen, int* dataIdx, int* constIdx) {
+	initScope("gendata");
+
+	sect_table_n section = ast->nodeData.directive->section;
+
+	data_entry_t** entries = NULL;
+	int* entriesSize = NULL;
+	int* entriesCapacity = NULL;
+	int* idx = NULL;
+	bool isData = false;
+
+	switch (section) {
+		case DATA_SECT_N:
+			entries = parser->dataTable->dataEntries;
+			entriesSize = &parser->dataTable->dSize;
+			entriesCapacity = &parser->dataTable->dCapacity;
+			idx = dataIdx;
+			isData = true;
+			break;
+		case CONST_SECT_N:
+			entries = parser->dataTable->constEntries;
+			entriesSize = &parser->dataTable->cSize;
+			entriesCapacity = &parser->dataTable->cCapacity;
+			idx = constIdx;
+			break;
+		case BSS_SECT_N: return; // No data to generate for BSS
+		case EVT_SECT_N:
+			emitWarning(WARN_UNIMPLEMENTED, NULL, "Data generation for EVT section not yet implemented.");
+			return;
+		case IVT_SECT_N:
+			emitWarning(WARN_UNIMPLEMENTED, NULL, "Data generation for IVT section not yet implemented.");
+			return;
+		default:
+			emitError(ERR_INTERNAL, NULL, "Data generation in invalid section %d.", section);
+			break;
+	}
+
+	/**
+	 * Very important note here:
+	 * It may seem that there is a disconnect between using an index on the data entries and the current ast node
+	 * As in will `entry` really be the data entry that `ast` refers to?
+	 * The answer is yes (pretty sure I think)
+	 * The codegen loops through the ASTs in the order that they were created
+	 * The data entries also get created in the order of the data directives
+	 * For example, line 5 contains the first data directive, creating the first data entry
+	 * Line 10 has the next data directive, creating the second data entry
+	 * On codegen, when it arrives to the line 5-first data directive AST node, the index is 0
+	 * Thus it uses the first data entry, advancing to 1
+	 * When the next data directive AST node arrives, the index is 1, accessing its respective data entry
+	 * That also means no need to pass in `ast` as the entry already contains a pointer to it
+	 * `ast` was only needed to get the section
+	 */
+
+	data_entry_t* entry = entries[*idx];
+	if (!entry) emitError(ERR_INTERNAL, NULL, "Data entry at index %d is NULL.", *idx);
+
+	log("  Generating data entry %d of type %d at address 0x%08X with size %d bytes.", *idx, entry->type, entry->addr, entry->size);
+
+	// Depending on the type of the data entry
+	switch (entry->type) {
+		case STRING_TYPE: genString(codegen, entry, entries, entriesSize, entriesCapacity, idx, isData); break;
+		case BYTES_TYPE: genBytes(codegen, entry, entries, entriesSize, entriesCapacity, idx, isData); break;
+		case HWORDS_TYPE:
+		case WORDS_TYPE:
+		case FLOATS_TYPE: emitWarning(WARN_UNIMPLEMENTED, NULL, "Data entry type %d generation not yet implemented.", entry->type); break;
+		default: emitError(ERR_INTERNAL, NULL, "Data entry type %d invalid", entry->type);
+	}
+}
+
 void gencode(Parser* parser, CodeGen* codegen) {
 	initScope("gencode");
 
-	int j = 0; // Just a dummy variable for now, will be used to track data entries
+	int dataIdx = 0;
+	int constIdx = 0;
 	for (int i = 0; i < parser->astCount; i++) {
 		Node* ast = parser->asts[i];
 		log("Generating code for AST %d (%p):", i, ast);
@@ -496,9 +723,6 @@ void gencode(Parser* parser, CodeGen* codegen) {
 				} else gentext(parser, codegen, ast);
 				break;
 			case ND_DIRECTIVE:
-				// emitWarning(WARN_UNIMPLEMENTED, &linedata, "Directive codegen.");
-				// break;
-
 				log("  Directive");
 				// Certain directives are useless
 				// The directives to care about all the data ones
@@ -506,13 +730,12 @@ void gencode(Parser* parser, CodeGen* codegen) {
 					log("    Ignoring directive %s", ast->token->lexeme);
 					break;
 				}
-				
+
 				// Data directives are stored in the data table
 				log("    Processing directive %s", ast->token->lexeme);
-				emitWarning(WARN_UNIMPLEMENTED, &linedata, "Data directive codegen not yet implemented.");
-				break;
-				gendata(parser, codegen, j);
-				j++;
+				// emitWarning(WARN_UNIMPLEMENTED, &linedata, "Data directive codegen not yet implemented.");
+				// break;
+				gendata(parser, ast, codegen, &dataIdx, &constIdx);
 				break;
 			default:
 				log("  AST root is neither instruction nor directive, ignoring.");
@@ -526,11 +749,11 @@ void displayCodeGen(CodeGen* codegen) {
 	rlog("CodeGen State:");
 	rlog("Text Section: %d instructions", codegen->text.instructionCount);
 	for (int i = 0; i < codegen->text.instructionCount; i++) {
-		rlog("  [%04d] 0x%08X", i, codegen->text.instructions[i]);
+		rlog("  [%04d] 0x%08X", i*4, codegen->text.instructions[i]);
 	}
 	rlog("Data Section: %d bytes", codegen->data.dataCount);
 	for (int i = 0; i < codegen->data.dataCount; i++) {
-		if (i % 16 == 0) log("  [%04d] ", i);
+		if (i % 16 == 0) rlog("  [%04d] ", i);
 		rlog("%02X ", codegen->data.data[i]);
 		if (i % 16 == 15 || i == codegen->data.dataCount - 1) rlog("\n");
 	}

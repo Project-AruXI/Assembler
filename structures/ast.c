@@ -499,6 +499,8 @@ DirctvNode* initDirectiveNode() {
 	node->nary.exprCapacity = 2;
 	node->nary.exprCount = 0;
 
+	node->section = 0xFF; // Invalid section by default
+
 	return node;
 }
 
@@ -537,6 +539,7 @@ SymbNode* initSymbolNode(int symbTableIndex, uint32_t value) {
 
 	symbNode->symbTableIndex = symbTableIndex;
 	symbNode->value = value;
+	symbNode->type = NTYPE_UINT32;
 
 	return symbNode;
 }

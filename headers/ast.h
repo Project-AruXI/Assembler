@@ -114,14 +114,9 @@ typedef struct DirectiveNode {
 		int exprCount;
 		int exprCapacity;
 	} nary;
-} DirctvNode;
 
-typedef struct SymbolNode {
-	// The name of the symbol is in the token's lexeme, no need to have it here
-	int symbTableIndex; // The index of the symbol in the symbol table, -1 if not yet added
-	// The symbol's value is in the symbol table entry, but maybe have it???
-	uint32_t value;
-} SymbNode;
+	uint8_t section;
+} DirctvNode;
 
 typedef enum {
 	NTYPE_INT8,
@@ -136,6 +131,14 @@ typedef enum {
 
 	NTYPE_FLOAT
 } NumType;
+
+typedef struct SymbolNode {
+	// The name of the symbol is in the token's lexeme, no need to have it here
+	int symbTableIndex; // The index of the symbol in the symbol table, -1 if not yet added
+	// The symbol's value is in the symbol table entry, but maybe have it???
+	uint32_t value;
+	NumType type; // The numeric type of the symbol (can either be an address [uint32] or one of INT*)
+} SymbNode;
 
 typedef struct NumberNode {
 	union {
