@@ -54,25 +54,25 @@ static char* nstrncat(char* dest, const char* src, size_t n) {
 	return dest;
 }
 
-static AOEFFSectHeader* generateSectionHeaders(SectionTable* sectTable) {
+static AOEFFSectHdr* generateSectionHeaders(SectionTable* sectTable, uint32_t sectOff) {
 	int sectEntries = 0;
 	for (int i = 0; i < 6; i++) {
 		if (sectTable->entries[i].size != 0) sectEntries++;
 	}
 	sectEntries++; // ending blank entry
 
-	AOEFFSectHeader* headers = (AOEFFSectHeader*) malloc(sizeof(AOEFFSectHeader) * sectEntries);
+	AOEFFSectHdr* headers = (AOEFFSectHdr*) malloc(sizeof(AOEFFSectHdr) * sectEntries);
 	if (!headers) emitError(ERR_MEM, NULL, "Failed to allocate memory for section headers.");
 
 	// Offset where all sections start at, basically the end of the string table
-	uint32_t baseOffset = sizeof(AOEFFheader) + (sizeof(AOEFFSectHeader) * sectEntries);
-
+	uint32_t baseOffset = sectOff;
+	uint32_t sectOffset = baseOffset;
 	for (int i = 0, hdrIdx = 0; i < 6; i++) {
 		if (sectTable->entries[i].size == 0) continue;
 
-		headers[hdrIdx] = (AOEFFSectHeader) {
+		headers[hdrIdx] = (AOEFFSectHdr) {
 			.shSectName = {0},
-			.shSectOff = baseOffset,
+			.shSectOff = sectOffset,
 			.shSectSize = sectTable->entries[i].size,
 			.shSectRel = SE_SECT_UNDEF // No relocations for now
 		};
@@ -88,19 +88,19 @@ static AOEFFSectHeader* generateSectionHeaders(SectionTable* sectTable) {
 		}
 		strncpy(headers[hdrIdx].shSectName, sectName, 8);
 
-		baseOffset += sectTable->entries[i].size;
+		sectOffset += sectTable->entries[i].size;
 		hdrIdx++;
 	}
 
 	return headers;
 }
 
-static AOEFFSymbEntry* generateSymbolTable(SymbolTable* symbTable, uint32_t strTabSize, char** outStrTab) {
+static AOEFFSymEnt* generateSymbolTable(SymbolTable* symbTable, uint32_t strTabSize, char** outStrTab) {
 	uint32_t symbTableSize = symbTable->size;
 	// Including empty ending symbol
 	symbTableSize++;
 
-	AOEFFSymbEntry* entries = (AOEFFSymbEntry*) malloc(sizeof(AOEFFSymbEntry) * symbTableSize);
+	AOEFFSymEnt* entries = (AOEFFSymEnt*) malloc(sizeof(AOEFFSymEnt) * symbTableSize);
 	if (!entries) emitError(ERR_MEM, NULL, "Failed to allocate memory for symbol table.");
 
 	// Build string table at the same time
@@ -123,7 +123,7 @@ static AOEFFSymbEntry* generateSymbolTable(SymbolTable* symbTable, uint32_t strT
 	for (uint32_t i = 0; i < symbTable->size; i++) {
 		symb_entry_t* symb = symbTable->entries[i];
 
-		entries[i] = (AOEFFSymbEntry) {
+		entries[i] = (AOEFFSymEnt) {
 			.seSymbName = stridx,
 			.seSymbSize = symb->size,
 			.seSymbVal = symb->value.val,
@@ -137,7 +137,7 @@ static AOEFFSymbEntry* generateSymbolTable(SymbolTable* symbTable, uint32_t strT
 	nstrncat(stStrs, "END_AOEFF_STRS\0", 16);
 
 	// Add end blank entry
-	entries[symbTableSize-1] = (AOEFFSymbEntry) {
+	entries[symbTableSize-1] = (AOEFFSymEnt) {
 		.seSymbName = 0,
 		.seSymbSize = 0x00000000,
 		.seSymbVal = 0x00000000,
@@ -166,17 +166,17 @@ void writeBinary(CodeGen* codegen, const char* filename) {
 	// Including empty ending symbol
 	symbTableSize++;
 
-	uint32_t symbOff = sizeof(AOEFFheader) + (sizeof(AOEFFSectHeader) * sectEntries);
-	uint32_t strTabOff = symbOff + (sizeof(AOEFFSymbEntry) * symbTableSize);
+	uint32_t symbOff = sizeof(AOEFFhdr) + (sizeof(AOEFFSectHdr) * sectEntries);
+	uint32_t strTabOff = symbOff + (sizeof(AOEFFSymEnt) * symbTableSize);
 	
 	uint32_t symbStrsSize = getSymbolStringsSize(codegen->symbolTable);
 
 	// Write header info
-	AOEFFheader header = {
+	AOEFFhdr header = {
 		.hID = {AH_ID0, AH_ID1, AH_ID2, AH_ID3},
 		.hType = AHT_AOBJ,
 		.hEntry = 0, // No entry point for object files
-		.hSectOff = sizeof(AOEFFheader),
+		.hSectOff = sizeof(AOEFFhdr),
 		.hSectSize = sectEntries,
 		.hSymbOff = symbOff,
 		.hSymbSize = symbTableSize,
@@ -185,19 +185,19 @@ void writeBinary(CodeGen* codegen, const char* filename) {
 		.hRelDirOff = 0, // No relocations for now
 		.hRelDirSize = 0,
 	};
-	fwrite(&header, sizeof(AOEFFheader), 1, outfile);
+	fwrite(&header, sizeof(AOEFFhdr), 1, outfile);
 
 	// Write section headers
-	AOEFFSectHeader* sectHeaders = generateSectionHeaders(codegen->sectionTable);
-	fwrite(sectHeaders, sizeof(AOEFFSectHeader), sectEntries, outfile);
+	AOEFFSectHdr* sectHeaders = generateSectionHeaders(codegen->sectionTable, strTabOff + symbStrsSize);
+	fwrite(sectHeaders, sizeof(AOEFFSectHdr), sectEntries, outfile);
 	free(sectHeaders);
 
 	// Write symbol table
 	// char* stStrs = NULL; // The string table
 	AOEFFStrTab stringTable;
 	stringTable.stStrs = NULL;
-	AOEFFSymbEntry* symbEntries = generateSymbolTable(codegen->symbolTable, symbStrsSize, &stringTable.stStrs);
-	fwrite(symbEntries, sizeof(AOEFFSymbEntry), symbTableSize, outfile);
+	AOEFFSymEnt* symbEntries = generateSymbolTable(codegen->symbolTable, symbStrsSize, &stringTable.stStrs);
+	fwrite(symbEntries, sizeof(AOEFFSymEnt), symbTableSize, outfile);
 	free(symbEntries);
 
 	// Write string table
