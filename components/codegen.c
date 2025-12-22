@@ -231,8 +231,8 @@ static uint32_t encodeM(InstrNode* data, SymbolTable* symbTable) {
 
 	uint8_t rs = data->data.mType.xb->nodeData.reg->regNumber;
 
-	// rr is the optional index register, defaults to 0b00000
-	uint8_t rr = data->data.mType.xi ? data->data.mType.xi->nodeData.reg->regNumber : 0b00000;
+	// rr is the optional index register, defaults to 0b11110 (XZ)
+	uint8_t rr = data->data.mType.xi ? data->data.mType.xi->nodeData.reg->regNumber : 0b11110;
 
 	Node* immNode = data->data.mType.imm;
 
