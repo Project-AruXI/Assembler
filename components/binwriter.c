@@ -69,6 +69,7 @@ static AOEFFSectHdr* generateSectionHeaders(SectionTable* sectTable, uint32_t se
 	uint32_t sectOffset = baseOffset;
 	for (int i = 0, hdrIdx = 0; i < 6; i++) {
 		if (sectTable->entries[i].size == 0) continue;
+		if (i == BSS_SECT_N) sectOffset = 0; // sectOffset applies to the binary, which BSS is not in
 
 		headers[hdrIdx] = (AOEFFSectHdr) {
 			.shSectName = {0},
@@ -88,7 +89,9 @@ static AOEFFSectHdr* generateSectionHeaders(SectionTable* sectTable, uint32_t se
 		}
 		strncpy(headers[hdrIdx].shSectName, sectName, 8);
 
-		sectOffset += sectTable->entries[i].size;
+		log("Section %s starts at 0x%x\n", sectName, sectOffset);
+
+		if (i != BSS_SECT_N) sectOffset += sectTable->entries[i].size;
 		hdrIdx++;
 	}
 
