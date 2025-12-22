@@ -70,6 +70,7 @@ typedef struct InstructionNode {
 
 		struct {
 			struct ASTNode* offset; // Can be a label or an expression
+			uint32_t lp; // Needed to compute the offset
 		} biType; // For Bi-type instructions
 
 		struct {
@@ -79,6 +80,7 @@ typedef struct InstructionNode {
 		struct {
 			struct ASTNode* cond;
 			struct ASTNode* offset; // Can be a label or an expression
+			uint32_t lp; // Needed to compute the offset
 		} bcType; // For Bc-type instructions
 
 		struct {

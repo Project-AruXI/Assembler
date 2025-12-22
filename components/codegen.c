@@ -272,9 +272,81 @@ static uint32_t encodeBu(InstrNode* data) {
 	return encoding;
 }
 
-static uint32_t encodeBc(InstrNode* data) {}
+static uint32_t encodeBc(InstrNode* data, SymbolTable* symbTable) {
+	initScope("encodeBc");
 
-static uint32_t encodeBi(InstrNode* data) {}
+	uint32_t encoding = 0x00000000;
+#ifdef _WIN64
+	uint32_t opcode = 0b0000000;
+#else
+	uint8_t opcode = 0b0000000;
+#endif
+
+	switch (data->instruction) {
+		case B: opcode = 0b11000100; break;
+		default: emitError(ERR_INTERNAL, NULL, "Could not encode instruction `%s`", INSTRUCTIONS[data->instruction]);
+	}
+
+	Node* condNode = data->data.bcType.cond;
+	uint8_t cond = condNode->nodeData.number->value.uint14Value;
+	// cond should already be the numer representing the condition
+	// ie if cond == 0, it represents eq
+
+	// The rest is the same as Bi, mostly
+
+	Node* labelNode = data->data.bcType.offset;
+
+	int32_t label = (int32_t) getImmediateEncoding(labelNode, NTYPE_INT19, symbTable);
+	log("Label value for Bc-type instruction: 0x%X", label);
+
+	uint32_t lp = data->data.bcType.lp;
+	log("LP value for Bc-type instruction: 0x%X", lp);
+
+	int32_t offset = (label - lp) << 2;
+	log("Computed offset for Bc-type instruction: 0x%X", offset);
+
+	encoding = (opcode << 24) | (offset & 0x7FFFF) << 5 | (cond & 0x0F);
+	log("Encoded Bc-type instruction `%s`: 0x%08X", INSTRUCTIONS[data->instruction], encoding);
+
+	return encoding;
+}
+
+static uint32_t encodeBi(InstrNode* data, SymbolTable* symbTable) {
+	initScope("encodeBi");
+
+	uint32_t encoding = 0x00000000;
+#ifdef _WIN64
+	uint32_t opcode = 0b0000000;
+#else
+	uint8_t opcode = 0b0000000;
+#endif
+
+	switch (data->instruction) {
+		case UB: opcode = 0b11000000; break;
+		case CALL: opcode = 0b11000110; break;
+		default: emitError(ERR_INTERNAL, NULL, "Could not encode instruction `%s`", INSTRUCTIONS[data->instruction]);
+	}
+
+	Node* labelNode = data->data.biType.offset;
+
+	int32_t label = (int32_t) getImmediateEncoding(labelNode, NTYPE_INT19, symbTable);
+	log("Label value for Bi-type instruction: 0x%X", label);
+
+	// label is just the address to go to
+	// It will be encoded as an offset from the current LP
+	// It is then saved as the offset * 4 and signed extended to 19 bits
+
+	uint32_t lp = data->data.biType.lp;
+	log("LP value for Bi-type instruction: 0x%X", lp);
+
+	int32_t offset = (label - lp) << 2;
+	log("Computed offset for Bi-type instruction: 0x%X", offset);
+
+	encoding = (opcode << 24) | ((offset & 0x7FFFF));
+	log("Encoded Bi-type instruction `%s`: 0x%08X", INSTRUCTIONS[data->instruction], encoding);
+
+	return encoding;
+}
 
 static uint32_t encodeS(InstrNode* data) {
 	initScope("encodeS");
@@ -321,8 +393,8 @@ static void gentext(Parser* parser, CodeGen* codegen, Node* ast) {
 		case R_TYPE: encoding = encodeR(ast->nodeData.instruction); break;
 		case M_TYPE: encoding = encodeM(ast->nodeData.instruction, parser->symbolTable); break;
 		case BU_TYPE: encoding = encodeBu(ast->nodeData.instruction); break;
-		case BC_TYPE: emitWarning(WARN_UNIMPLEMENTED, NULL, "BC_TYPE instruction encoding not yet implemented."); break;
-		case BI_TYPE: emitWarning(WARN_UNIMPLEMENTED, NULL, "BI_TYPE instruction encoding not yet implemented."); break;
+		case BC_TYPE: encoding = encodeBc(ast->nodeData.instruction, parser->symbolTable); break;
+		case BI_TYPE: encoding = encodeBi(ast->nodeData.instruction, parser->symbolTable); break;
 		case S_TYPE: encoding = encodeS(ast->nodeData.instruction); break;
 		default: break;
 	}

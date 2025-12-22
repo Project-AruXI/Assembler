@@ -385,7 +385,7 @@ void handleM(Parser* parser, Node* instrRoot) {
 		.source = ssGetString(instrToken->sstring)
 	};
 
-	log("Handling M instruction at line %d", instrToken->linenum);
+	// log("Handling M instruction at line %d", instrToken->linenum);
 
 	// M-type instructions are the most tricky as it can vary
 	// In general, they have the following forms:
@@ -471,7 +471,7 @@ void handleM(Parser* parser, Node* instrRoot) {
 	parser->currentTokenIndex++;
 	nextToken = parser->tokens[parser->currentTokenIndex];
 
-	trace("Next token after first operand and comma: `%s`; type: %d", nextToken->lexeme, nextToken->type);
+	// trace("Next token after first operand and comma: `%s`; type: %d", nextToken->lexeme, nextToken->type);
 
 	if (nextToken->type == TK_LSQBRACKET) {
 		// This means it is one of the first three forms (mem-op reg, [reg]; mem-op reg, [reg, imm]; mem-op reg, [reg], reg)
@@ -641,6 +641,9 @@ void handleBi(Parser* parser, Node* instrRoot) {
 	// enum Instructions instrType = instrRoot->nodeData.instruction->instruction;
 	instrRoot->nodeData.instruction->instrType = BI_TYPE;
 
+	// The LP will be needed later when computing the offset
+	instrRoot->nodeData.instruction->data.biType.lp = parser->sectionTable->entries[parser->sectionTable->activeSection].lp;
+
 	// Instructions are in `label` form, that it, the only operand needs to be a single label (not that not a number but an identifier)
 
 	parser->currentTokenIndex++;
@@ -753,6 +756,8 @@ void handleBc(Parser* parser, Node* instrRoot) {
 
 	instrRoot->nodeData.instruction->instrType = BC_TYPE;
 
+	instrRoot->nodeData.instruction->data.bcType.lp = parser->sectionTable->entries[parser->sectionTable->activeSection].lp;
+
 	// Instructions are in `label` form, that is, it is near the same as Bi except that it has a condition code
 
 	// Check condition code
@@ -763,7 +768,7 @@ void handleBc(Parser* parser, Node* instrRoot) {
 
 	// Coincidentally (or even on purpose ;)), the numeric value of the condition is the same as its index in CONDS
 	Node* condASTNode = initASTNode(AST_LEAF, ND_NUMBER, instrToken, instrRoot);
-	NumNode* condNode = initNumberNode(NTYPE_INT8, index, 0.0);
+	NumNode* condNode = initNumberNode(NTYPE_UINT14, index, 0.0);
 	setNodeData(condASTNode, condNode, ND_NUMBER);
 	instrRoot->nodeData.instruction->data.bcType.cond = condASTNode;
 
@@ -901,14 +906,16 @@ void decomposeLD(Node* ldInstrNode, Node* xdNode, Node* immNode) {
 
 	// Split the imm here
 	// Take note that immNode can either be a number or an operator
-	uint32_t imm;
+	uint32_t imm = 0x0;
 	if (immNode->nodeType == ND_NUMBER) imm = immNode->nodeData.number->value.uint32Value;
 	else if (immNode->nodeType == ND_OPERATOR) imm = immNode->nodeData.operator->value; // Assume it has been evaled
+	else if (immNode->nodeType == ND_SYMB) imm = immNode->nodeData.symbol->value;
 
 	uint16_t upperImm = (imm >> 18) & 0x3FFF; // imm[31:18]
 	uint16_t midImm = (imm >> 4) & 0x3FFF; // imm[17:4]
 	uint8_t lowerImm = imm & 0x0F; // imm[3:0]
 
+	trace("Decomposing immediate 0x%X into upper 0x%X, mid 0x%X, lower 0x%X", imm, upperImm, midImm, lowerImm);
 
 	int reg = xdNode->nodeData.reg->regNumber;
 	int c0 = 12; // x12

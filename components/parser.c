@@ -96,6 +96,7 @@ static void parseLabel(Parser* parser) {
 	} else if (existingEntry) {
 		// Update the existing entry to be defined now
 		SET_DEFINED(existingEntry->flags);
+		CLR_EXPRESSION(existingEntry->flags);
 		// And the section
 		existingEntry->flags = SET_SECTION(existingEntry->flags, parser->sectionTable->activeSection);
 		existingEntry->linenum = labelToken->linenum;
@@ -144,7 +145,7 @@ static void parseIdentifier(Parser* parser) {
 	}
 
 	enum Instructions instruction = (enum Instructions) index;
-	log("Parsing instruction: `%s`. Set type to `%s`", idToken->lexeme, INSTRUCTIONS[instruction]);
+	// log("Parsing instruction: `%s`. Set type to `%s`", idToken->lexeme, INSTRUCTIONS[instruction]);
 
 	InstrNode* instructionData = initInstructionNode(instruction, parser->sectionTable->activeSection);
 	setNodeData(instructionRoot, instructionData, ND_INSTRUCTION);
@@ -195,7 +196,7 @@ static void parseDirective(Parser* parser) {
 	// To properly identify the directive
 	enum Directives directive = (enum Directives) index;
 
-	log("Parsing directive: `%s`. Set type to `%s`", directiveToken->lexeme, DIRECTIVES[directive]);
+	// log("Parsing directive: `%s`. Set type to `%s`", directiveToken->lexeme, DIRECTIVES[directive]);
 
 	// The actions depend on the specific directive
 
@@ -409,7 +410,7 @@ void parse(Parser* parser) {
 		}
 	}
 
-	rlog("Parsing complete. Will now fix any LD imm instructions.");
+	// rlog("Parsing complete. Will now fix any LD imm instructions.");
 	// All symbols have been gathered
 	// Try to fix the LD imm/move instructions
 	struct LDIMM* current = parser->ldimmList;
