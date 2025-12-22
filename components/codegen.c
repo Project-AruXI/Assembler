@@ -342,7 +342,7 @@ static uint32_t encodeBi(InstrNode* data, SymbolTable* symbTable) {
 	int32_t offset = (label - lp) << 2;
 	log("Computed offset for Bi-type instruction: 0x%X", offset);
 
-	encoding = (opcode << 24) | ((offset & 0x7FFFF));
+	encoding = (opcode << 24) | ((offset & 0xFFFFFF));
 	log("Encoded Bi-type instruction `%s`: 0x%08X", INSTRUCTIONS[data->instruction], encoding);
 
 	return encoding;
