@@ -97,6 +97,9 @@ static uint32_t getImmediateEncoding(Node* immNode, NumType expectedType, Symbol
 		default:
 			emitError(ERR_INTERNAL, &linedata, "Immediate node is of invalid type.");
 	}
+
+	log("Immediate encoding value: 0x%X", value);
+
 	return value;
 }
 
@@ -112,7 +115,7 @@ static uint32_t encodeI(InstrNode* data, SymbolTable* symbTable) {
 #endif
 
 	switch (data->instruction) {
-		case ADD: case MV: case NOP: opcode = 0b10000000; break;
+		case ADD: case NOP: opcode = 0b10000000; break;
 		case ADDS: opcode = 0b10001000; break;
 		case SUB: case MVN: opcode = 0b10010000; break;
 		case SUBS: case CMP: opcode = 0b10011000; break;
@@ -123,6 +126,7 @@ static uint32_t encodeI(InstrNode* data, SymbolTable* symbTable) {
 		case LSL: opcode = 0b01001000; break;
 		case LSR: opcode = 0b01001010; break;
 		case ASR: opcode = 0b01001100; break;
+		case MV: opcode = 0b10000100; break;
 		default: emitError(ERR_INTERNAL, NULL, "Could not encode instruction `%s`", INSTRUCTIONS[data->instruction]);
 	}
 
@@ -146,11 +150,14 @@ static uint32_t encodeI(InstrNode* data, SymbolTable* symbTable) {
 
 	encoding = (opcode << 24) | (imm14 << 10) | (rs << 5) | (rd << 0);
 
+	detail("Encoded I-type instruction `%s`: 0x%08X", INSTRUCTIONS[data->instruction], encoding);
+	trace("Opcode: 0b%07b; imm14: 0x%04X; rs: 0x%02X; rd: 0x%02X", opcode, imm14, rs, rd);
+
 	return encoding;
 }
 
 static uint32_t encodeR(InstrNode* data) {
-	initScope("encodeR");
+	// initScope("encodeR");
 
 	uint32_t encoding = 0x00000000;
 #ifdef _WIN64
@@ -163,11 +170,11 @@ static uint32_t encodeR(InstrNode* data) {
 	// Only exception are truly R types
 	// Refer to ISA documentation for more details
 	switch (data->instruction) {
-		case ADD: case MV: opcode = 0b10000001; break;
+		case ADD: opcode = 0b10000001; break;
 		case ADDS: opcode = 0b10001001; break;
 		case SUB: case MVN: opcode = 0b10010001; break;
 		case SUBS: case CMP: opcode = 0b10011001; break;
-		case OR: opcode = 0b01000001; break;
+		case OR: case MV: opcode = 0b01000001; break;
 		case AND: opcode = 0b01000011; break;
 		case XOR: opcode = 0b01000101; break;
 		case NOT: opcode = 0b01000111; break;
@@ -186,6 +193,9 @@ static uint32_t encodeR(InstrNode* data) {
 	uint8_t rr = data->data.rType.xr ? (uint8_t) data->data.rType.xr->nodeData.reg->regNumber : 30;
 
 	encoding = (opcode << 24) | (rs << 10) | (rr << 5) | (rd << 0);
+
+	detail("Encoded R-type instruction `%s`: 0x%08X", INSTRUCTIONS[data->instruction], encoding);
+	trace("Opcode: 0b%07b; rs: 0x%02X; rr: 0x%02X; rd: 0x%02X", opcode, rs, rr, rd);
 
 	return encoding;
 }
@@ -231,7 +241,10 @@ static uint32_t encodeM(InstrNode* data, SymbolTable* symbTable) {
 
 	if (immNode) imm9 = (int16_t) getImmediateEncoding(immNode, NTYPE_INT9, symbTable);
 
-	encoding = (opcode << 24) | ((imm9 & 0x1FF) << 15) | (rr << 10) | (rs << 5) | (rd << 0);
+	encoding = (opcode << 24) | ((imm9 & 0x1FF) << 15) | (rs << 10) | (rr << 5) | (rd << 0);
+
+	detail("Encoded M-type instruction `%s`: 0x%08X", INSTRUCTIONS[data->instruction], encoding);
+	trace("Opcode: 0b%07b; imm9: 0x%03X; rs: 0x%02X; rr: 0x%02X; rd: 0x%02X", opcode, (imm9 & 0x1FF), rs, rr, rd);
 
 	return encoding;
 }
@@ -319,11 +332,12 @@ static void gentext(Parser* parser, CodeGen* codegen, Node* ast) {
 		codegen->text.instructionCapacity += 5;
 		uint32_t* temp = (uint32_t*) realloc(codegen->text.instructions, codegen->text.instructionCapacity * sizeof(uint32_t));
 		if (!temp) emitError(ERR_MEM, NULL, "Could not reallocate memory of instruction encodings.");
-		log("New instruction array: %p", temp);
+		// log("New instruction array: %p", temp);
 		codegen->text.instructions = temp;
 	}
-	log("Writing to index %d (address %p)", codegen->text.instructionCount, &codegen->text.instructions[codegen->text.instructionCount]);
+	log("Writing 0x%x to index %d (address %p)", encoding, codegen->text.instructionCount, &codegen->text.instructions[codegen->text.instructionCount]);
 	codegen->text.instructions[codegen->text.instructionCount] = encoding;
+	log("Wrote 0x%x", codegen->text.instructions[codegen->text.instructionCount]);
 	codegen->text.instructionCount++;
 }
 
@@ -341,7 +355,7 @@ static void gentext(Parser* parser, CodeGen* codegen, Node* ast) {
 static void genString(CodeGen* codegen, data_entry_t* entry, data_entry_t** entries, int* _entriesSize, int* _entriesCapacity, int* _idx, bool isData) {
 	initScope("genString");
 
-	log("  Generating string data entry at address 0x%08X with size %d bytes.", entry->addr, entry->size);
+	// log("  Generating string data entry at address 0x%08X with size %d bytes.", entry->addr, entry->size);
 
 	Node* stringNode = entry->data[0];
 	// Make sure that the node is indeed a string node
@@ -382,7 +396,7 @@ static void genString(CodeGen* codegen, data_entry_t* entry, data_entry_t** entr
 
 		codegenData[*codegenDataCount] = byteValue;
 		(*codegenDataCount)++;
-		log("    Wrote byte 0x%02X to %s section in codegen.", byteValue, isData ? "data" : "const");
+		// log("    Wrote byte 0x%02X to %s section in codegen.", byteValue, isData ? "data" : "const");
 	}
 }
 
@@ -583,7 +597,7 @@ void gencode(Parser* parser, CodeGen* codegen) {
 				// In the case that the ast is an LD instruction
 				// And the LD is LD imm/move, the text to generate is not the LD instruction itself but the decomposed ones in `expanded`
 				if (ast->nodeData.instruction->instruction == LD && !ast->nodeData.instruction->data.mType.xb) {
-					for (int i = 0; i < 5; i++) {
+					for (int i = 0; i < 6; i++) {
 						Node* expandedInstr = ast->nodeData.instruction->data.mType.expanded[i];
 						log("    Generating expanded instruction %d for LD immediate/move form:", i);
 						gentext(parser, codegen, expandedInstr);
@@ -596,7 +610,7 @@ void gencode(Parser* parser, CodeGen* codegen) {
 				} else gentext(parser, codegen, ast);
 				break;
 			case ND_DIRECTIVE:
-				log("  Directive");
+				// log("  Directive");
 				// Certain directives are useless
 				// The directives to care about all the data ones
 				if (ast->token->type < TK_D_STRING || ast->token->type > TK_D_ALIGN) {
@@ -606,8 +620,6 @@ void gencode(Parser* parser, CodeGen* codegen) {
 
 				// Data directives are stored in the data table
 				log("    Processing directive %s", ast->token->lexeme);
-				// emitWarning(WARN_UNIMPLEMENTED, &linedata, "Data directive codegen not yet implemented.");
-				// break;
 				gendata(parser, ast, codegen, &dataIdx, &constIdx);
 				break;
 			default:
