@@ -5,9 +5,9 @@
   obj:
   .byte _sy, _sy + 0x2, _sy + 0x4
 
-  % filled: .fill 12, 0xff
+  filled: .fill #12, #0xff
 
-  zeros: .zero #12
+  zeros: .zero #10
 
 .const
   helloWorld: .string "Hello World"
@@ -23,4 +23,5 @@
     add x1, x1, #1
     ld x2, =buffer
     strb x1, [x2]
+    nop
     ret
