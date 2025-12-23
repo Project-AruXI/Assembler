@@ -221,7 +221,7 @@ static void parseDirective(Parser* parser) {
 		case WORD: handleWord(parser, directiveRoot); break;
 		case FLOAT: handleFloat(parser, directiveRoot); break;
 		case ZERO: handleZero(parser, directiveRoot); break;
-		case FILL:
+		case FILL: handleFill(parser, directiveRoot); break;
 
 		case ALIGN:
 		case SIZE:

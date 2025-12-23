@@ -638,8 +638,8 @@ void handleZero(Parser* parser, Node* directiveRoot) {
 	if (nextToken->type == TK_NEWLINE) emitError(ERR_INVALID_SYNTAX, &linedata, "The `.zero` directive must be followed by an expression.");
 
 	Node* exprRoot = parseExpression(parser);
-	// setUnaryDirectiveData(directiveData, exprRoot);
-	addNaryDirectiveData(directiveData, exprRoot);
+	setUnaryDirectiveData(directiveData, exprRoot);
+	// addNaryDirectiveData(directiveData, exprRoot);
 	exprRoot->parent = directiveRoot;
 
 	nextToken = parser->tokens[parser->currentTokenIndex]; // This better be the newline
@@ -665,13 +665,99 @@ void handleZero(Parser* parser, Node* directiveRoot) {
 	uint32_t dataSize = exprEvalResult;
 	parser->sectionTable->entries[parser->sectionTable->activeSection].lp += dataSize;
 
+	Node** arr = newNodeArray(1);
+	if (!arr) emitError(ERR_MEM, NULL, "Failed to allocate memory for `.zero` directive.");
+	int arrCapacity = 2;
+	int arrCount = 0;
+	arr = nodeArrayInsert(arr, &arrCapacity, &arrCount, exprRoot);
+	if (!arr) emitError(ERR_MEM, NULL, "Failed to reallocate memory for `.zero` directive.");
+
 	// Set the data for the data table
-	data_entry_t* zeroDataEntry = initDataEntry(BYTES_TYPE, dataAddr, dataSize, directiveData->nary.exprs, 1, directiveData->nary.exprCapacity);
+	data_entry_t* zeroDataEntry = initDataEntry(BYTES_TYPE, dataAddr, dataSize, arr, arrCount, arrCapacity);
 	addDataEntry(parser->dataTable, zeroDataEntry, parser->sectionTable->activeSection);
 }
 
 void handleFill(Parser* parser, Node* directiveRoot) {
-	emitWarning(WARN_UNIMPLEMENTED, NULL, "The `.fill` directive is not yet implemented.");
+	initScope("handleFill");
+
+	Token* directiveToken = parser->tokens[parser->currentTokenIndex++];
+	linedata_ctx linedata = {
+		.linenum = directiveToken->linenum,
+		.source = ssGetString(directiveToken->sstring)
+	};
+
+	directiveToken->type = TK_D_FILL;
+
+	validateSection(parser, directiveToken, &linedata);
+
+	DirctvNode* directiveData = initDirectiveNode();
+	setNodeData(directiveRoot, directiveData, ND_DIRECTIVE);
+
+	log("Handling .fill directive at line %d", directiveToken->linenum);
+
+	// The directive is in the form of `.fill len, num`
+	// len and num are allowed to be an expression
+	// len is to be evald immediately since it is necessary to compute the size/lp
+	// num can be left as an AST
+	// The expression will be in the form of its AST, with the directive holding this AST
+	//     .fill
+	//       |
+	//       +----+
+	//       |    |
+	// 			len  num
+	//     				|
+	// 					 ... ...
+
+	Token* nextToken = parser->tokens[parser->currentTokenIndex];
+	if (nextToken->type == TK_NEWLINE) emitError(ERR_INVALID_SYNTAX, &linedata, "The `.fill` directive must be followed by two expressions.");
+
+	Node* lenExprRoot = parseExpression(parser);
+	lenExprRoot->parent = directiveRoot;
+
+	nextToken = parser->tokens[parser->currentTokenIndex]; // This better be the comma
+	if (nextToken->type != TK_COMMA) emitError(ERR_INVALID_SYNTAX, &linedata, "The `.fill` directive must have a comma after the length expression.");
+	parser->currentTokenIndex++; // Consume the comma
+
+	nextToken = parser->tokens[parser->currentTokenIndex];
+	if (nextToken->type == TK_NEWLINE) emitError(ERR_INVALID_SYNTAX, &linedata, "The `.fill` directive must be followed by two expressions.");
+
+	Node* numExprRoot = parseExpression(parser);
+	setBinaryDirectiveData(directiveData, lenExprRoot, numExprRoot);
+
+	nextToken = parser->tokens[parser->currentTokenIndex]; // This better be the newline
+	if (nextToken->type != TK_NEWLINE) emitError(ERR_INVALID_SYNTAX, &linedata, "The `.fill` directive must be followed by only two expressions on the same line.");
+	parser->currentTokenIndex++; // Consume the newline
+
+	uint32_t dataAddr = parser->sectionTable->entries[parser->sectionTable->activeSection].lp;
+	// The size of the filled data is determined by evaluating the length expression
+	bool evald = evaluateExpression(lenExprRoot, parser->symbolTable);
+	if (!evald) emitError(ERR_INVALID_EXPRESSION, &linedata, "Failed to evaluate length expression in `.fill` directive.");
+
+	uint32_t exprEvalResult = 0x0;
+
+	switch (lenExprRoot->nodeType) {
+		case ND_SYMB: exprEvalResult = lenExprRoot->nodeData.symbol->value; break;
+		case ND_OPERATOR: exprEvalResult = lenExprRoot->nodeData.operator->value; break;
+		case ND_NUMBER: exprEvalResult = lenExprRoot->nodeData.number->value.uint32Value; break;
+		default: emitError(ERR_INTERNAL, NULL, "Unexpected node type after expression evaluation in `.fill` directive."); break;
+	}
+
+	rlog("exprEvalResult: 0x%x", exprEvalResult);
+
+	uint32_t dataSize = exprEvalResult;
+	parser->sectionTable->entries[parser->sectionTable->activeSection].lp += dataSize;
+
+	Node** arr = newNodeArray(2);
+	if (!arr) emitError(ERR_MEM, NULL, "Failed to allocate memory for `.fill` directive.");
+	int arrCapacity = 2;
+	int arrCount = 0;
+	arr = nodeArrayInsert(arr, &arrCapacity, &arrCount, lenExprRoot);
+	if (!arr) emitError(ERR_MEM, NULL, "Failed to reallocate memory for `.fill` directive.");
+	arr = nodeArrayInsert(arr, &arrCapacity, &arrCount, numExprRoot);
+	if (!arr) emitError(ERR_MEM, NULL, "Failed to reallocate memory for `.fill` directive.");
+
+	data_entry_t* fillDataEntry = initDataEntry(BYTES_TYPE, dataAddr, dataSize, arr, arrCount, arrCapacity);
+	addDataEntry(parser->dataTable, fillDataEntry, parser->sectionTable->activeSection);
 }
 
 

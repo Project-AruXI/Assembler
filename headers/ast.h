@@ -109,7 +109,7 @@ typedef struct DirectiveNode {
 		// All two-argument directives have a symbol as the first argument
 		struct ASTNode* symb;
 		struct ASTNode* data;
-	} binary; // For directives with two arguments, like .size, .set, .type, .zero, .sizeof
+	} binary; // For directives with two arguments, like .size, .set, .type, .fill, .sizeof
 
 	struct {
 		struct ASTNode** exprs;

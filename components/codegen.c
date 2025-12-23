@@ -613,6 +613,50 @@ static void genZeros(CodeGen* codegen, data_entry_t* entry, data_entry_t** entri
 	}
 }
 
+static void genFill(CodeGen* codegen, data_entry_t* entry, data_entry_t** entries, int* _entriesSize, int* _entriesCapacity, int* _idx, bool isData) {
+	initScope("genFill");
+
+	log("  Generating fill data entry at address 0x%08X with size %d bytes.", entry->addr, entry->size);
+
+	uint8_t* codegenData= NULL;
+	int* codegenDataCount = NULL;
+	int* codegenDataCapacity = NULL;
+
+	if (isData) {
+		codegenData = codegen->data.data;
+		codegenDataCount = &codegen->data.dataCount;
+		codegenDataCapacity = &codegen->data.dataCapacity;
+	} else {
+		codegenData = codegen->consts.data;
+		codegenDataCount = &codegen->consts.dataCount;
+		codegenDataCapacity = &codegen->consts.dataCapacity;
+	}
+
+	// Write fill bytes to the appropriate section
+	// In handleFill, the data was set as an array of two with [0] as len and [1] as num
+	// Make sure this is true
+	if (entry->dataCount != 2) emitError(ERR_INTERNAL, NULL, "Fill data entry does not have exactly two data nodes.");
+	if (!entry->data[1]) emitError(ERR_INTERNAL, NULL, "Fill data entry's fill byte node is NULL.");
+
+	uint8_t fillByte = (uint8_t) entry->data[1]->nodeData.number->value.int8Value;
+
+	for (int i = 0; i < entry->size; i++) {
+		// Ensure enough capacity
+		if (*codegenDataCount == *codegenDataCapacity) {
+			*codegenDataCapacity *= 2;
+			uint8_t* temp = (uint8_t*) realloc(codegenData, sizeof(uint8_t) * (*codegenDataCapacity));
+			if (!temp) emitError(ERR_MEM, NULL, "Failed to reallocate memory for data/const section.");
+			codegenData = temp;
+			if (isData) codegen->data.data = codegenData;
+			else codegen->consts.data = codegenData;
+		}
+
+		codegenData[*codegenDataCount] = fillByte;
+		(*codegenDataCount)++;
+		// log("    Wrote fill byte 0x%02X to %s section in codegen.", fillByte, isData ? "data" : "const");
+	}
+}
+
 static void gendata(Parser* parser, Node* ast, CodeGen* codegen, int* dataIdx, int* constIdx) {
 	initScope("gendata");
 
@@ -679,6 +723,10 @@ static void gendata(Parser* parser, Node* ast, CodeGen* codegen, int* dataIdx, i
 
 	if (ast->token->type == TK_D_ZERO) {
 		genZeros(codegen, entry, entries, entriesSize, entriesCapacity, idx, isData);
+		(*idx)++;
+		return;
+	} else if (ast->token->type == TK_D_FILL) {
+		genFill(codegen, entry, entries, entriesSize, entriesCapacity, idx, isData);
 		(*idx)++;
 		return;
 	}
