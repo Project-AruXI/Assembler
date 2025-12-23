@@ -576,6 +576,43 @@ static void genBytes(CodeGen* codegen, data_entry_t* entry, data_entry_t** entri
 	}
 }
 
+static void genZeros(CodeGen* codegen, data_entry_t* entry, data_entry_t** entries, int* _entriesSize, int* _entriesCapacity, int* _idx, bool isData) {
+	initScope("genZeros");
+
+	log("  Generating zero/fill data entry at address 0x%08X with size %d bytes.", entry->addr, entry->size);
+
+	uint8_t* codegenData= NULL;
+	int* codegenDataCount = NULL;
+	int* codegenDataCapacity = NULL;
+
+	if (isData) {
+		codegenData = codegen->data.data;
+		codegenDataCount = &codegen->data.dataCount;
+		codegenDataCapacity = &codegen->data.dataCapacity;
+	} else {
+		codegenData = codegen->consts.data;
+		codegenDataCount = &codegen->consts.dataCount;
+		codegenDataCapacity = &codegen->consts.dataCapacity;
+	}
+
+	// Write zeros to the appropriate section
+	for (int i = 0; i < entry->size; i++) {
+		// Ensure enough capacity
+		if (*codegenDataCount == *codegenDataCapacity) {
+			*codegenDataCapacity *= 2;
+			uint8_t* temp = (uint8_t*) realloc(codegenData, sizeof(uint8_t) * (*codegenDataCapacity));
+			if (!temp) emitError(ERR_MEM, NULL, "Failed to reallocate memory for data/const section.");
+			codegenData = temp;
+			if (isData) codegen->data.data = codegenData;
+			else codegen->consts.data = codegenData;
+		}
+
+		codegenData[*codegenDataCount] = 0x00;
+		(*codegenDataCount)++;
+		// log("    Wrote zero byte to %s section in codegen.", isData ? "data" : "const");
+	}
+}
+
 static void gendata(Parser* parser, Node* ast, CodeGen* codegen, int* dataIdx, int* constIdx) {
 	initScope("gendata");
 
@@ -590,15 +627,15 @@ static void gendata(Parser* parser, Node* ast, CodeGen* codegen, int* dataIdx, i
 	switch (section) {
 		case DATA_SECT_N:
 			entries = parser->dataTable->dataEntries;
-			entriesSize = &parser->dataTable->dSize;
-			entriesCapacity = &parser->dataTable->dCapacity;
+			entriesSize = (int*)&parser->dataTable->dSize;
+			entriesCapacity = (int*)&parser->dataTable->dCapacity;
 			idx = dataIdx;
 			isData = true;
 			break;
 		case CONST_SECT_N:
 			entries = parser->dataTable->constEntries;
-			entriesSize = &parser->dataTable->cSize;
-			entriesCapacity = &parser->dataTable->cCapacity;
+			entriesSize = (int*)&parser->dataTable->cSize;
+			entriesCapacity = (int*)&parser->dataTable->cCapacity;
 			idx = constIdx;
 			break;
 		case BSS_SECT_N: return; // No data to generate for BSS
@@ -634,6 +671,18 @@ static void gendata(Parser* parser, Node* ast, CodeGen* codegen, int* dataIdx, i
 
 	log("  Generating data entry %d of type %d at address 0x%08X with size %d bytes.", *idx, entry->type, entry->addr, entry->size);
 
+	// Intercept zero and fill since those have a difference structure
+	// Especially .zero
+	// There is a chance that it is in a non-bss section
+	// And converting the simple AST (.zero -> size) to x nodes is too much for just zeros
+	// Maybe it is worth it for .fill, but in the case that the number is 0, it might apply the same as .zero
+
+	if (ast->token->type == TK_D_ZERO) {
+		genZeros(codegen, entry, entries, entriesSize, entriesCapacity, idx, isData);
+		(*idx)++;
+		return;
+	}
+
 	// Depending on the type of the data entry
 	switch (entry->type) {
 		case STRING_TYPE: genString(codegen, entry, entries, entriesSize, entriesCapacity, idx, isData); break;
@@ -643,6 +692,7 @@ static void gendata(Parser* parser, Node* ast, CodeGen* codegen, int* dataIdx, i
 		case FLOATS_TYPE: emitWarning(WARN_UNIMPLEMENTED, NULL, "Data entry type %d generation not yet implemented.", entry->type); break;
 		default: emitError(ERR_INTERNAL, NULL, "Data entry type %d invalid", entry->type);
 	}
+	(*idx)++;
 }
 
 void gencode(Parser* parser, CodeGen* codegen) {
@@ -654,10 +704,10 @@ void gencode(Parser* parser, CodeGen* codegen) {
 		Node* ast = parser->asts[i];
 		log("Generating code for AST %d (%p):", i, ast);
 
-		linedata_ctx linedata = {
-			.linenum = ast->token->linenum,
-			.source = ssGetString(ast->token->sstring)
-		};
+		// linedata_ctx linedata = {
+		// 	.linenum = ast->token->linenum,
+		// 	.source = ssGetString(ast->token->sstring)
+		// };
 
 		// Each ast root will be either a label, instruction, or directive
 		// Labels can be ignored

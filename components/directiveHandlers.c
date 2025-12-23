@@ -648,9 +648,21 @@ void handleZero(Parser* parser, Node* directiveRoot) {
 
 	uint32_t dataAddr = parser->sectionTable->entries[parser->sectionTable->activeSection].lp;
 	// The size of the zeroed data is determined by evaluating the expression
-	int exprEvalResult = evaluateExpression(exprRoot, parser->symbolTable);
-	if (exprEvalResult < 0) emitError(ERR_INVALID_EXPRESSION, &linedata, "Failed to evaluate expression in `.zero` directive.");
-	uint32_t dataSize = (uint32_t)exprEvalResult;
+	bool evald = evaluateExpression(exprRoot, parser->symbolTable);
+	if (!evald) emitError(ERR_INVALID_EXPRESSION, &linedata, "Failed to evaluate expression in `.zero` directive.");
+
+	uint32_t exprEvalResult = 0x0;
+
+	switch (exprRoot->nodeType) {
+		case ND_SYMB: exprEvalResult = exprRoot->nodeData.symbol->value; break;
+		case ND_OPERATOR: exprEvalResult = exprRoot->nodeData.operator->value; break;
+		case ND_NUMBER: exprEvalResult = exprRoot->nodeData.number->value.uint32Value; break;
+		default: emitError(ERR_INTERNAL, NULL, "Unexpected node type after expression evaluation in `.zero` directive."); break;
+	}
+
+	rlog("exprEvalResult: 0x%x", exprEvalResult);
+
+	uint32_t dataSize = exprEvalResult;
 	parser->sectionTable->entries[parser->sectionTable->activeSection].lp += dataSize;
 
 	// Set the data for the data table
