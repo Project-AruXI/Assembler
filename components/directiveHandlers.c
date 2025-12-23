@@ -762,7 +762,85 @@ void handleFill(Parser* parser, Node* directiveRoot) {
 
 
 void handleSize(Parser* parser, Node* directiveRoot) {
+	initScope("handleSize");
+
 	emitWarning(WARN_UNIMPLEMENTED, NULL, "The `.size` directive is not yet implemented.");
+
+	Token* directiveToken = parser->tokens[parser->currentTokenIndex++];
+	linedata_ctx linedata = {
+		.linenum = directiveToken->linenum,
+		.source = ssGetString(directiveToken->sstring)
+	};
+
+	directiveToken->type = TK_D_SIZE;
+
+	DirctvNode* directiveData = initDirectiveNode();
+	setNodeData(directiveRoot, directiveData, ND_DIRECTIVE);
+
+	log("Handling .size directive at line %d", directiveToken->linenum);
+
+	// The directive is in the form of `.size symbol, expr`
+	// It is going to be almost the same as `.set` but with some slight differences
+
+	// For now, the expression must contain locally already-defined symbols
+	// This is to simplify things
+	// Later, it will allow forward references
+
+	Token* nextToken = parser->tokens[parser->currentTokenIndex];
+	if (nextToken->type == TK_NEWLINE) emitError(ERR_INVALID_SYNTAX, &linedata, "The `.size` directive must be followed by a symbol and an expression.");
+	if (nextToken->type != TK_IDENTIFIER) emitError(ERR_INVALID_SYNTAX, &linedata, "The `.size` directive must be followed by an identifier, got `%s`.", nextToken->lexeme);
+	// Same as in .set
+	validateSymbolToken(nextToken, &linedata);
+	Token* symbToken = nextToken;
+
+
+	symb_entry_t* symbEntry = getSymbolEntry(parser->symbolTable, nextToken->lexeme);
+
+	parser->currentTokenIndex++; // Consume the symbol token
+	nextToken = parser->tokens[parser->currentTokenIndex];
+	if (nextToken->type != TK_COMMA) emitError(ERR_INVALID_SYNTAX, &linedata, "The `.size` directive must have a comma after the symbol.");
+	parser->currentTokenIndex++; // Consume the comma
+
+	// Onwards to the expression
+	Node* exprRoot = parseExpression(parser);
+	exprRoot->astNodeType = AST_INTERNAL;
+	exprRoot->parent = directiveRoot;
+
+	nextToken = parser->tokens[parser->currentTokenIndex]; // This better be the newline
+	if (nextToken->type != TK_NEWLINE) emitError(ERR_INVALID_SYNTAX, &linedata, "The `.size` directive must be followed by only a symbol and an expression on the same line.");
+	parser->currentTokenIndex++; // Consume the newline
+
+	// Eval
+	bool evald = evaluateExpression(exprRoot, parser->symbolTable);
+	if (!evald) emitError(ERR_INVALID_EXPRESSION, &linedata, "Failed to evaluate expression in `.size` directive.");
+
+	uint32_t symbSize = 0x0;
+	switch (exprRoot->nodeType) {
+		case ND_SYMB: symbSize = exprRoot->nodeData.symbol->value; break;
+		case ND_OPERATOR: symbSize = exprRoot->nodeData.operator->value; break;
+		case ND_NUMBER: symbSize = exprRoot->nodeData.number->value.uint32Value; break;
+		default: emitError(ERR_INTERNAL, NULL, "Unexpected node type after expression evaluation in `.size` directive."); break;
+	}
+
+	int symbTableIndex = -1;
+	if (symbEntry) {
+		// Symbol exists, just update the size
+		symbEntry->size = symbSize;
+	} else {
+		SYMBFLAGS flags = CREATE_FLAGS(M_ABS, T_NONE, E_EXPR, 0, L_LOC, R_REF, D_UNDEF);
+		symbEntry = initSymbolEntry(symbToken->lexeme, flags, NULL, 0, symbToken->sstring, symbToken->linenum);
+		symbEntry->size = symbSize;
+		addSymbolEntry(parser->symbolTable, symbEntry);
+		symbTableIndex = parser->symbolTable->size - 1;
+
+		// This is also a reference
+		addSymbolReference(symbEntry, directiveToken->sstring, directiveToken->linenum);
+	}
+
+	Node* symbNode = initASTNode(AST_LEAF, ND_SYMB, symbToken, directiveRoot);
+	SymbNode* symbData = initSymbolNode(symbTableIndex, 0);
+	setNodeData(symbNode, symbData, ND_SYMB);
+	setBinaryDirectiveData(directiveData, symbNode, exprRoot);
 }
 
 void handleType(Parser* parser, Node* directiveRoot) {
