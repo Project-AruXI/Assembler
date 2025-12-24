@@ -224,8 +224,8 @@ static void parseDirective(Parser* parser) {
 		case FILL: handleFill(parser, directiveRoot); break;
 
 		case SIZE: handleSize(parser, directiveRoot); break;
+		case EXTERN: handleExtern(parser, directiveRoot); break;
 		case ALIGN:
-		case EXTERN:
 			parser->currentTokenIndex++;
 			emitWarning(WARN_UNIMPLEMENTED, &linedata, "Directive `%s` not yet implemented!", directiveToken->lexeme);
 			break;

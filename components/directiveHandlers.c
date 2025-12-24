@@ -167,6 +167,11 @@ void handleSet(Parser* parser, Node* directiveRoot) {
 	if (symbEntry && GET_DEFINED(symbEntry->flags)) {
 		emitError(ERR_REDEFINED, &linedata, "Symbol redefinition: `%s`. First defined at `%s`", nextToken->lexeme, ssGetString(symbEntry->source));
 	}
+	if (symbEntry && GET_SECTION(symbEntry->flags) == S_UNDEF) {
+		// This means that this symbol got extern
+		// Not allowed
+		emitError(ERR_REDEFINED, &linedata, "Symbol `%s` was declared extern and cannot be defined here.", nextToken->lexeme);
+	}
 
 	parser->currentTokenIndex++; // Consume the symbol token
 	// Make sure comma is next
@@ -1000,13 +1005,70 @@ void handleType(Parser* parser, Node* directiveRoot) {
 }
 
 
-void handleAlign(Parser* parser, Node* directiveRoot) {
-	emitWarning(WARN_UNIMPLEMENTED, NULL, "The `.align` directive is not yet implemented.");
-}
+void handleAlign(Parser* parser, Node* directiveRoot) {}
 
 void handleExtern(Parser* parser, Node* directiveRoot) {
-	emitWarning(WARN_UNIMPLEMENTED, NULL, "The `.extern` directive is not yet implemented.");
-	// This will require the need for relocation tables
+	initScope("handleExtern");
+
+	Token* directiveToken = parser->tokens[parser->currentTokenIndex++];
+	linedata_ctx linedata = {
+		.linenum = directiveToken->linenum,
+		.source = ssGetString(directiveToken->sstring)
+	};
+
+	directiveToken->type = TK_D_GLOB;
+
+	DirctvNode* directiveData = initDirectiveNode();
+	setNodeData(directiveRoot, directiveData, ND_DIRECTIVE);
+
+	log("Handling .extern directive at line %d", directiveToken->linenum);
+
+	// The directive is in the form of `.extern symbol`
+
+	Token* nextToken = parser->tokens[parser->currentTokenIndex];
+	if (nextToken->type == TK_NEWLINE) emitError(ERR_INVALID_SYNTAX, &linedata, "The `.extern` directive must be followed by a symbol.");
+	if (nextToken->type != TK_IDENTIFIER) emitError(ERR_INVALID_SYNTAX, &linedata, "The `.extern` directive must be followed by an identifier, got `%s`.", nextToken->lexeme);
+	// Same thing as .set
+	validateSymbolToken(nextToken, &linedata);
+	Token* symbToken = nextToken;
+
+	// If the symbol exists, just update it to have section as 0b111
+	// Make sure that it is not already defined, locality as global, type as none (0), subtype as 0, 0 for value
+	// Otherwise, create a new entry
+
+	symb_entry_t* symbEntry = getSymbolEntry(parser->symbolTable, symbToken->lexeme);
+	int symbTableIndex = -1;
+	if (symbEntry) {
+		// Symbol exists, check for redefinition
+		// Extern technically is a definition
+		if (GET_DEFINED(symbEntry->flags)) emitError(ERR_REDEFINED, &linedata, "Symbol definition from `.extern` directive: `%s`. First defined at `%s`.", symbToken->lexeme, ssGetString(symbEntry->source));
+		// Update locality to global
+		SET_LOCALITY(symbEntry->flags);
+		symbEntry->flags = SET_MAIN_TYPE(symbEntry->flags, M_NONE);
+		symbEntry->flags = SET_SUB_TYPE(symbEntry->flags, T_NONE);
+		CLR_EXPRESSION(symbEntry->flags);
+		symbEntry->value.expr = NULL;
+		symbEntry->value.val = 0;
+	} else {
+		// Create new entry
+		SYMBFLAGS flags = CREATE_FLAGS(M_NONE, T_NONE, E_VAL, S_UNDEF, L_GLOB, R_NREF, D_UNDEF);
+		symbEntry = initSymbolEntry(symbToken->lexeme, flags, NULL, 0, symbToken->sstring, symbToken->linenum);
+		addSymbolEntry(parser->symbolTable, symbEntry);
+		symbTableIndex = parser->symbolTable->size - 1;
+	}
+	// Should it be a symbol reference??
+	// addSymbolReference(symbEntry, symbToken->sstring, symbToken->linenum);
+
+	// Make sure there is nothing else afterwards except for newline
+	parser->currentTokenIndex++; // Consume the symbol token
+	nextToken = parser->tokens[parser->currentTokenIndex];
+	if (nextToken->type != TK_NEWLINE) emitError(ERR_INVALID_SYNTAX, &linedata, "The `.glob` directive must be followed by only a symbol on the same line.");
+	parser->currentTokenIndex++; // Consume the newline
+
+	Node* symbNode = initASTNode(AST_LEAF, ND_SYMB, symbToken, directiveRoot);
+	SymbNode* symbData = initSymbolNode(symbTableIndex, 0);
+	setNodeData(symbNode, symbData, ND_SYMB);
+	setUnaryDirectiveData(directiveData, symbNode);
 }
 
 void handleInclude(Parser* parser) {
@@ -1260,6 +1322,4 @@ void handleDef(Parser* parser, Node* directiveRoot) {
 	addStruct(parser->structTable, defStruct);
 }
 
-void handleSizeof(Parser* parser, Node* directiveRoot) {
-	emitWarning(WARN_UNIMPLEMENTED, NULL, "The `.sizeof` directive is not yet implemented.");
-}
+void handleSizeof(Parser* parser, Node* directiveRoot) {}
