@@ -90,6 +90,7 @@ static Node* parsePrimary(Parser* parser) {
 				addSymbolEntry(parser->symbolTable, symbEntry);
 			}
 			addSymbolReference(symbEntry, token->sstring, token->linenum);
+			SET_REFERENCED(symbEntry->flags);
 
 			SymbNode* symbData = initSymbolNode(symbEntry->symbTableIndex, 0);
 			setNodeData(node, symbData, ND_SYMB);
@@ -197,7 +198,8 @@ Node* parseExpression(Parser* parser) {
 }
 
 bool evaluateExpression(Node* exprRoot, SymbolTable* symbTable) {
-		if (!exprRoot) return false;
+		// if (!exprRoot) return false;
+		if (!exprRoot) emitError(ERR_INTERNAL, NULL, "Expression root node is NULL during evaluation.");
 
 		switch (exprRoot->nodeType) {
 			case ND_NUMBER: {
@@ -246,12 +248,8 @@ bool evaluateExpression(Node* exprRoot, SymbolTable* symbTable) {
 								case NTYPE_INT16: resValue = (uint32_t) numData->value.int16Value; break;
 								case NTYPE_INT32: resValue = (uint32_t) numData->value.int32Value; break;
 								case NTYPE_UINT32: resValue = numData->value.uint32Value; break;
-								case NTYPE_FLOAT:
-									emitError(ERR_INVALID_EXPRESSION, NULL, "Symbol expression evaluated to float, which is not supported for symbol values.");
-									return false;
-								default:
-									emitError(ERR_INTERNAL, NULL, "Unknown numeric type in symbol expression evaluation.");
-									return false;
+								case NTYPE_FLOAT: emitError(ERR_INVALID_EXPRESSION, NULL, "Symbol expression evaluated to float, which is not supported for symbol values.");
+								default: emitError(ERR_INTERNAL, NULL, "Unknown numeric type in symbol expression evaluation.");
 							}
 						} else if (resNode->nodeType == ND_SYMB) {
 							SymbNode* resSymb = resNode->nodeData.symbol;
@@ -276,7 +274,6 @@ bool evaluateExpression(Node* exprRoot, SymbolTable* symbTable) {
 					}
 				}
 				// Symbol not defined
-				emitWarning(WARN_UNIMPLEMENTED, NULL, "Symbol '%s' used in expression is not defined.", entry->name);
 				return false;
 			}
 			case ND_OPERATOR: {
@@ -382,4 +379,26 @@ bool evaluateExpression(Node* exprRoot, SymbolTable* symbTable) {
 			default: emitError(ERR_INTERNAL, NULL, "Invalid node type in expression evaluation.");
 		}
 		return false;
+}
+
+Node* getExternSymbol(Node* exprRoot) {
+	if (exprRoot->nodeType != ND_OPERATOR) {
+		// If no operator, it means it is just the symbol itself
+		if (exprRoot->nodeType == ND_SYMB) return exprRoot;
+		else return NULL;
+	}
+
+	OpNode* opData = (OpNode*)exprRoot->nodeData.operator;
+	if (!opData) return NULL;
+
+	Node* left = opData->data.binary.left;
+	Node* right = opData->data.binary.right;
+	if (!left || !right) return NULL;
+	if (exprRoot->token->type != TK_PLUS && exprRoot->token->type != TK_MINUS) return NULL;
+
+	if (left->nodeType == ND_SYMB && right->nodeType == ND_NUMBER) return left;
+	else if (left->nodeType == ND_NUMBER && right->nodeType == ND_SYMB) return right;
+	else return NULL;
+
+	return NULL;
 }

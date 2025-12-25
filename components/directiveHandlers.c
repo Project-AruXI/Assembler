@@ -1032,6 +1032,8 @@ void handleExtern(Parser* parser, Node* directiveRoot) {
 	validateSymbolToken(nextToken, &linedata);
 	Token* symbToken = nextToken;
 
+	log("Setting symbol %s as extern", symbToken->lexeme);
+
 	// If the symbol exists, just update it to have section as 0b111
 	// Make sure that it is not already defined, locality as global, type as none (0), subtype as 0, 0 for value
 	// Otherwise, create a new entry
@@ -1051,6 +1053,7 @@ void handleExtern(Parser* parser, Node* directiveRoot) {
 		symbEntry->value.val = 0;
 	} else {
 		// Create new entry
+		// Although extern is a definition, it is also not one since many things depend on it being defined
 		SYMBFLAGS flags = CREATE_FLAGS(M_NONE, T_NONE, E_VAL, S_UNDEF, L_GLOB, R_NREF, D_UNDEF);
 		symbEntry = initSymbolEntry(symbToken->lexeme, flags, NULL, 0, symbToken->sstring, symbToken->linenum);
 		addSymbolEntry(parser->symbolTable, symbEntry);

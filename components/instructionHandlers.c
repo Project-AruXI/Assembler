@@ -217,7 +217,9 @@ void handleIR(Parser* parser, Node* instrRoot) {
 				parser->currentTokenIndex++; // Consume the newline
 
 				return;
-			} else if (nextToken->type == TK_IMM) {
+			} else if (nextToken->type == TK_IMM || nextToken->type == TK_IDENTIFIER || 
+					nextToken->type == TK_LPAREN || nextToken->type == TK_PLUS || nextToken->type == TK_MINUS || 
+					nextToken->type == TK_RPAREN || nextToken->type == TK_LP) {
 				Node* immExprRoot = parseExpression(parser);
 
 				// Definitive I-type with three operands
@@ -641,9 +643,6 @@ void handleBi(Parser* parser, Node* instrRoot) {
 	// enum Instructions instrType = instrRoot->nodeData.instruction->instruction;
 	instrRoot->nodeData.instruction->instrType = BI_TYPE;
 
-	// The LP will be needed later when computing the offset
-	instrRoot->nodeData.instruction->data.biType.lp = parser->sectionTable->entries[parser->sectionTable->activeSection].lp;
-
 	// Instructions are in `label` form, that it, the only operand needs to be a single label (not that not a number but an identifier)
 
 	parser->currentTokenIndex++;
@@ -755,8 +754,6 @@ void handleBc(Parser* parser, Node* instrRoot) {
 	log("Handling Bc instruction at line %d", instrToken->linenum);
 
 	instrRoot->nodeData.instruction->instrType = BC_TYPE;
-
-	instrRoot->nodeData.instruction->data.bcType.lp = parser->sectionTable->entries[parser->sectionTable->activeSection].lp;
 
 	// Instructions are in `label` form, that is, it is near the same as Bi except that it has a condition code
 
@@ -920,6 +917,7 @@ void decomposeLD(Node* ldInstrNode, Node* xdNode, Node* immNode) {
 	int reg = xdNode->nodeData.reg->regNumber;
 	int c0 = 12; // x12
 	int section = ldInstrNode->nodeData.instruction->section;
+	// Since additional instructions will be added, each new instruction will get its LP updated
 
 	// Note to self: For these instruction, the token fields are being set to NULL
 	// Make sure that in other places that access token, it checks for its existence

@@ -10,7 +10,7 @@ INCLUDES = -I$(HEADERS) -I$(COMMON)
 
 SRCS = assembler.c $(COMP)/diagnostics.c $(COMP)/lexer.c $(COMP)/parser.c $(COMP)/instructionHandlers.c $(COMP)/directiveHandlers.c \
 			 $(COMP)/expr.c $(COMP)/adecl.c $(COMP)/codegen.c $(COMP)/binwriter.c \
-			 $(STRUCTS)/SymbolTable.c $(STRUCTS)/SectionTable.c $(STRUCTS)/StructTable.c  $(STRUCTS)/DataTable.c $(STRUCTS)/ast.c
+			 $(STRUCTS)/SymbolTable.c $(STRUCTS)/SectionTable.c $(STRUCTS)/StructTable.c  $(STRUCTS)/DataTable.c $(STRUCTS)/RelocTable.c $(STRUCTS)/ast.c
 LIBS = $(COMMON)/libargparse.a $(COMMON)/libsds.a $(COMMON)/libsecuredstring.a
 TARGET = $(OUT)/arxsm
 

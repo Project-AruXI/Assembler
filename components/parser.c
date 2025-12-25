@@ -29,11 +29,12 @@ Parser* initParser(Token** tokens, int tokenCount, ParserConfig config) {
 	return parser;
 }
 
-void setTables(Parser* parser, SectionTable* sectionTable, SymbolTable* symbolTable, StructTable* structTable, DataTable* dataTable) {
+void setTables(Parser* parser, SectionTable* sectionTable, SymbolTable* symbolTable, StructTable* structTable, DataTable* dataTable, RelocTable* relocTable) {
 	parser->sectionTable = sectionTable;
 	parser->symbolTable = symbolTable;
 	parser->structTable = structTable;
 	parser->dataTable = dataTable;
+	parser->relocTable = relocTable;	
 }
 
 void deinitParser(Parser* parser) {
@@ -97,6 +98,7 @@ static void parseLabel(Parser* parser) {
 		// Update the existing entry to be defined now
 		SET_DEFINED(existingEntry->flags);
 		CLR_EXPRESSION(existingEntry->flags);
+		existingEntry->flags = SET_MAIN_TYPE(existingEntry->flags, M_ABS);
 		// And the section
 		existingEntry->flags = SET_SECTION(existingEntry->flags, parser->sectionTable->activeSection);
 		existingEntry->linenum = labelToken->linenum;
@@ -320,11 +322,69 @@ static void handleLDMove(Parser* parser, Node* ldInstrNode) {
 	Node* immNode = literalNode->nodeData.operator->data.unary.operand;
 
 	bool evald = evaluateExpression(immNode, parser->symbolTable);
+	// When evald is false, it means that an undefined symbol was used
+	// Make sure that:
+	// The expression is at maximum two operands with either + or - as the operand
+	// One operand must be a symbol, the other must be a number
+	// The symbol has been declared extern
+	// A relocation record will be made for this
+	// However, since this is for loading an immediate value and not an address, a relocation is not needed
+	//   when it can be evald
 	linedata_ctx linedata = {
 		.linenum = ldInstrNode->token->linenum,
 		.source = ssGetString(ldInstrNode->token->sstring)
 	};
-	if (!evald) emitError(ERR_INVALID_EXPRESSION, &linedata, "Failed to evaluate immediate expression for LD immediate form instruction.");
+
+	if (!evald) {
+		Node* externSymbol = getExternSymbol(immNode);
+		if (!externSymbol) {
+			linedata_ctx linedata = {
+				.linenum = ldInstrNode->token->linenum,
+				.source = ssGetString(ldInstrNode->token->sstring)
+			};
+			emitError(ERR_INVALID_EXPRESSION, &linedata, "Failed to get extern symbol for LD immediate form instruction.");
+		}
+
+		// Make sure the symbol is extern
+		symb_entry_t* symbEntry = getSymbolEntry(parser->symbolTable, externSymbol->token->lexeme);
+		if (!symbEntry) {
+			// If no entry at this point (all symbols should have been collected)
+			// Something went horribly wrong
+			emitError(ERR_INTERNAL, &linedata, "Failed to find symbol table entry for extern symbol in LD immediate form instruction.");
+		}
+
+		uint8_t sect = GET_SECTION(symbEntry->flags);
+		if (sect != S_UNDEF) {
+			emitError(ERR_INVALID_EXPRESSION, &linedata, "Undefined symbol `%s` used in LD move form instruction is not declared extern.", externSymbol->token->lexeme);
+		}
+
+		
+		int32_t addend = 0;
+		// Check if there is an operator node
+		// In that case, get the number node
+		// Also make sure imm is set as 0
+		if (immNode->nodeType == ND_OPERATOR) {
+			immNode->nodeData.operator->value = 0;
+
+			if (immNode->nodeData.operator->data.binary.left->nodeType == ND_NUMBER) {
+				addend = immNode->nodeData.operator->data.binary.left->nodeData.number->value.int32Value;
+			} else if (immNode->nodeData.operator->data.binary.right->nodeType == ND_NUMBER) {
+				addend = immNode->nodeData.operator->data.binary.right->nodeData.number->value.int32Value;
+			} else {
+				emitError(ERR_INTERNAL, &linedata, "Failed to find number node for addend in LD move form instruction.");
+			}
+
+		} else if (immNode->nodeType == ND_SYMB) {
+			immNode->nodeData.symbol->value = 0;
+		} else {
+			emitError(ERR_INTERNAL, &linedata, "Unexpected node type in LD move form instruction immediate field.");
+		}
+		
+		RelocEnt* reloc = initRelocEntry(parser->sectionTable->entries[parser->sectionTable->activeSection].lp, symbEntry->symbTableIndex, RELOC_TYPE_DECOMP, addend);
+		addRelocEntry(parser->relocTable, parser->sectionTable->activeSection, reloc);
+	}
+
+	// As per the comment above, when it can be evald, use the number as is, no relocation
 
 	decomposeLD(ldInstrNode, ldInstrNode->nodeData.instruction->data.mType.xds, immNode);
 }

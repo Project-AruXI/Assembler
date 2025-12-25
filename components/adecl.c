@@ -79,7 +79,7 @@ void lexParseADECLFile(FILE* file, ADECL_ctx* context) {
 		.enhancedFeatures = context->parentParserConfig.enhancedFeatures
 	};
 	Parser* parser = initParser(lexer->tokens, lexer->tokenCount, pconfig);
-	setTables(parser, NULL, symbolTable, structTable, NULL);
+	setTables(parser, NULL, symbolTable, structTable, NULL, NULL);
 
 	parse(parser);
 

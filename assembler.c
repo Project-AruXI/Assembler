@@ -122,6 +122,7 @@ int main(int argc, char const* argv[]) {
 	SectionTable* sectionTable = initSectionTable();
 	StructTable* structTable = initStructTable();
 	DataTable* dataTable = initDataTable();
+	RelocTable* relocTable = initRelocTable();
 
 	ParserConfig pconfig = {
 		.warningAsFatal = config.warningAsFatal,
@@ -129,7 +130,7 @@ int main(int argc, char const* argv[]) {
 		.enhancedFeatures = config.enhancedFeatures
 	};
 	Parser* parser = initParser(lexer->tokens, lexer->tokenCount, pconfig);
-	setTables(parser, sectionTable, symbolTable, structTable, dataTable);
+	setTables(parser, sectionTable, symbolTable, structTable, dataTable, relocTable);
 
 
 	parse(parser);
@@ -142,21 +143,23 @@ int main(int argc, char const* argv[]) {
 	}
 	rlog("\n");
 
-	displaySymbolTable(symbolTable);
-	CodeGen* codegen = initCodeGenerator(sectionTable, symbolTable);
+	CodeGen* codegen = initCodeGenerator(sectionTable, symbolTable, relocTable);
 	gencode(parser, codegen);
-	writeBinary(codegen, config.outbin);
-
+	// writeBinary(codegen, config.outbin);
+	
+	displaySymbolTable(symbolTable);
 	displaySectionTable(sectionTable);
 	displayStructTable(structTable);
 	displayDataTable(dataTable);
 	displayCodeGen(codegen);
+	displayRelocTable(relocTable);
 
 	deinitLexer(lexer);
 	deinitParser(parser);
 	deinitStructTable(structTable);
 	deinitSectionTable(sectionTable);
 	deinitSymbolTable(symbolTable);
+	deinitRelocTable(relocTable);
 	deinitCodeGenerator(codegen);
 
 	return 0;

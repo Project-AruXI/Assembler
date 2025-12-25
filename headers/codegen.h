@@ -6,6 +6,7 @@
 #include "parser.h"
 #include "SectionTable.h"
 #include "SymbolTable.h"
+#include "RelocTable.h"
 
 typedef struct CodeGenerator {
 	struct {
@@ -28,6 +29,7 @@ typedef struct CodeGenerator {
 
 	SectionTable* sectionTable;
 	SymbolTable* symbolTable;
+	RelocTable* relocTable;
 } CodeGen;
 
 
@@ -35,9 +37,10 @@ typedef struct CodeGenerator {
  * @brief 
  * @param sectionTable 
  * @param symbolTable
+ * @param relocTable
  * @return 
  */
-CodeGen* initCodeGenerator(SectionTable* sectionTable, SymbolTable* symbolTable);
+CodeGen* initCodeGenerator(SectionTable* sectionTable, SymbolTable* symbolTable, RelocTable* relocTable);
 /**
  * @brief 
  * @param codegen 

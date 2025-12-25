@@ -3,7 +3,7 @@
 #include "diagnostics.h"
 
 
-CodeGen* initCodeGenerator(SectionTable* sectionTable, SymbolTable* symbolTable) {
+CodeGen* initCodeGenerator(SectionTable* sectionTable, SymbolTable* symbolTable, RelocTable* relocTable) {
 	CodeGen* codegen = (CodeGen*) malloc(sizeof(CodeGen));
 	if (!codegen) emitError(ERR_MEM, NULL, "Failed to allocate memory for code generator.");
 
@@ -24,6 +24,7 @@ CodeGen* initCodeGenerator(SectionTable* sectionTable, SymbolTable* symbolTable)
 
 	codegen->sectionTable = sectionTable;
 	codegen->symbolTable = symbolTable;
+	codegen->relocTable = relocTable;
 
 	return codegen;
 }
@@ -36,7 +37,7 @@ void deinitCodeGenerator(CodeGen* codegen) {
 }
 
 
-static uint32_t getImmediateEncoding(Node* immNode, NumType expectedType, SymbolTable* symbTable) {
+static uint32_t getImmediateEncoding(Node* immNode, NumType expectedType, SymbolTable* symbTable, RelData* reldata) {
 	initScope("getImmediateEncoding");
 
 	log("Getting immediate encoding for %s", (immNode->token ? immNode->token->lexeme : "unknown"));
@@ -46,8 +47,81 @@ static uint32_t getImmediateEncoding(Node* immNode, NumType expectedType, Symbol
 		.linenum = immNode->token ? immNode->token->linenum : -1,
 		.source = immNode->token ? ssGetString(immNode->token->sstring) : NULL
 	};
-	if (!evald) emitError(ERR_INVALID_EXPRESSION, &linedata, "Could not evaluate immediate expression.");
+	// evald is false when the immediate expression uses an extern symbol
+	// In that case, the immediate is set to 0 and a relocation entry is added
+	if (!evald) {
+		// If my guess is correct, the same logic as in handleLDMove/Imm applies
+		log("Immediate expression could not be fully evaluated, likely due to extern symbol(s). Adding relocation entry.");
 
+		Node* externSymbol = getExternSymbol(immNode);
+		if (!externSymbol) {
+			linedata_ctx linedata = {
+				.linenum = immNode->token->linenum,
+				.source = ssGetString(immNode->token->sstring)
+			};
+			emitError(ERR_INVALID_EXPRESSION, &linedata, "Failed to get extern symbol for immediate.");
+		}
+
+		// Make sure the symbol is extern
+		symb_entry_t* symbEntry = getSymbolEntry(symbTable, externSymbol->token->lexeme);
+		if (!symbEntry) {
+			// If no entry at this point (all symbols should have been collected)
+			// Something went horribly wrong
+			emitError(ERR_INTERNAL, &linedata, "Failed to find symbol table entry for extern symbol in immediate.");
+		}
+
+		uint8_t sect = GET_SECTION(symbEntry->flags);
+		if (sect != S_UNDEF) {
+			emitError(ERR_INVALID_EXPRESSION, &linedata, "Undefined symbol `%s` used in immediate is not declared extern.", externSymbol->token->lexeme);
+		}
+		
+		int32_t addend = 0;
+		// Check if there is an operator node
+		// In that case, get the number node
+		// Also make sure imm is set as 0
+		if (immNode->nodeType == ND_OPERATOR) {
+			immNode->nodeData.operator->value = 0;
+
+			if (immNode->nodeData.operator->data.binary.left->nodeType == ND_NUMBER) {
+				addend = immNode->nodeData.operator->data.binary.left->nodeData.number->value.int32Value;
+			} else if (immNode->nodeData.operator->data.binary.right->nodeType == ND_NUMBER) {
+				addend = immNode->nodeData.operator->data.binary.right->nodeData.number->value.int32Value;
+			} else {
+				emitError(ERR_INTERNAL, &linedata, "Failed to find number node for addend in immediate.");
+			}
+		} else if (immNode->nodeType == ND_SYMB) {
+			immNode->nodeData.symbol->value = 0;
+		} else {
+			emitError(ERR_INTERNAL, &linedata, "Unexpected node type in immediate.");
+		}
+
+		reldata->addend = addend;
+		RelocEnt* reloc = initRelocEntry(reldata->lp, symbEntry->symbTableIndex, reldata->type, addend);
+
+		// Some relocation types affect certain sections
+		// So section can be inferred from those relocations
+		// At least for now????
+		sect_table_n section = 0;
+		switch (reldata->type) {
+			case RELOC_TYPE_ABS: case RELOC_TYPE_DECOMP: case RELOC_TYPE_MEM: case RELOC_TYPE_IR24: case RELOC_TYPE_IR19:
+				section = TEXT_SECT_N;
+				break;
+			case RELOC_TYPE_BYTE: case RELOC_TYPE_HWORD: case RELOC_TYPE_WORD:
+				section = DATA_SECT_N;
+				break;
+			default: emitError(ERR_INTERNAL, &linedata, "Unhandled relocation type for immediate.");
+		}
+
+		addRelocEntry(reldata->relocTable, section, reloc);
+
+		// When the relocation type is for branching, the immediate is always set to 0
+		// This causes it to use 0 on doing the offset math, which should not happen
+		// It is to remain as 0
+		// Easier way is to set the relTable in reldata as null to indicate
+		reldata->relocTable = NULL;
+
+		return 0x0; // externs result in 0
+	}
 
 	// immNode can either be an operator, number, or symbol node
 	// operator and number nodes have their value directly
@@ -70,17 +144,10 @@ static uint32_t getImmediateEncoding(Node* immNode, NumType expectedType, Symbol
 			SymbNode* symbData = (SymbNode*) immNode->nodeData.symbol;
 			if (!symbData) emitError(ERR_INTERNAL, NULL, "Symbol node data is NULL.");
 			int idx = symbData->symbTableIndex;
-			if (idx < 0 || idx >= (int)symbTable->size) {
-				emitError(ERR_INTERNAL, NULL, "Symbol index %d out of bounds in symbol table.", idx);
-			}
+			if (idx < 0 || idx >= (int)symbTable->size) emitError(ERR_INTERNAL, NULL, "Symbol index %d out of bounds in symbol table.", idx);
 			symb_entry_t* entry = symbTable->entries[idx];
-			if (!entry) {
-				emitError(ERR_INTERNAL, NULL, "Symbol table entry at index %d is NULL.", idx);
-			}
-			if (!GET_DEFINED(entry->flags)) {
-				emitError(ERR_UNDEFINED, &linedata, "Symbol `%s` is not defined.", entry->name);
-			}
-			value = entry->value.val; // Use val for now
+			if (!entry) emitError(ERR_INTERNAL, NULL, "Symbol table entry at index %d is NULL.", idx);
+			value = entry->value.val;
 			break;
 		}
 		case ND_OPERATOR: {
@@ -100,11 +167,51 @@ static uint32_t getImmediateEncoding(Node* immNode, NumType expectedType, Symbol
 
 	log("Immediate encoding value: 0x%X", value);
 
+	// Branch instructions always emit a relocation (but keep the evald immediate)
+	// Whether it is a branch instruction is encoded in the meaning of the relocation type (RELOC_IR19 or RELOC_IR24)
+	if (reldata->type == RELOC_TYPE_IR19 || reldata->type == RELOC_TYPE_IR24) {
+		detail("Adding relocation entry for branch instruction immediate.");
+
+		// Relocations allow a limited expression
+		// So something like `beq LABEL + 4` is allowed but `beq LABEL - (4 / 2)` is not
+		// The expression has already been evaluated but the error still occurs
+		// The function `getExtern` will be used, even though it is not really an extern
+		// It uses the logic needed, maybe need to rename it????
+		Node* branchtoNode = getExternSymbol(immNode);
+		if (!branchtoNode) {
+			// This means that the expression was too complex
+			emitError(ERR_INVALID_EXPRESSION, &linedata, "Branch immediate expression is too complex for relocation. Only simple symbol +/- addend expressions are allowed.");
+		}
+
+		// In the case that the expression has a number, it is the addend
+		int32_t addend = 0;
+
+		if (immNode->nodeType == ND_OPERATOR) {
+			OpNode* opData = immNode->nodeData.operator;
+			if (opData->data.binary.left == branchtoNode && opData->data.binary.right->nodeType == ND_NUMBER) {
+				addend = opData->data.binary.right->nodeData.number->value.int32Value;
+			} else if (opData->data.binary.right == branchtoNode && opData->data.binary.left->nodeType == ND_NUMBER) {
+				addend = opData->data.binary.left->nodeData.number->value.int32Value;
+			}
+		}
+
+		SymbNode* symbData = branchtoNode->nodeData.symbol;
+		if (!symbData) emitError(ERR_INTERNAL, NULL, "Symbol node data is NULL.");
+		int idx = symbData->symbTableIndex;
+		if (idx < 0 || idx >= (int)symbTable->size) emitError(ERR_INTERNAL, NULL, "Symbol index %d out of bounds in symbol table.", idx);
+		symb_entry_t* entry = symbTable->entries[idx];
+		if (!entry) emitError(ERR_INTERNAL, NULL, "Symbol table entry at index %d is NULL.", idx);
+
+		reldata->addend = addend;
+		RelocEnt* reloc = initRelocEntry(reldata->lp, entry->symbTableIndex, reldata->type, addend);
+		addRelocEntry(reldata->relocTable, TEXT_SECT_N, reloc);
+	}
+
 	return value;
 }
 
 
-static uint32_t encodeI(InstrNode* data, SymbolTable* symbTable) {
+static uint32_t encodeI(InstrNode* data, uint32_t lp, SymbolTable* symbTable, RelocTable* relocTable) {
 	initScope("encodeI");
 
 	uint32_t encoding = 0x00000000;
@@ -142,7 +249,13 @@ static uint32_t encodeI(InstrNode* data, SymbolTable* symbTable) {
 
 	uint16_t imm14 = 0x0000;
 
-	if (immNode) imm14 = (uint16_t) getImmediateEncoding(immNode, NTYPE_UINT14, symbTable);
+	RelData reldata = {
+		.lp = lp,
+		.addend = 0,
+		.type = RELOC_TYPE_ABS,
+		.relocTable = relocTable
+	};
+	if (immNode) imm14 = (uint16_t) getImmediateEncoding(immNode, NTYPE_UINT14, symbTable, &reldata);
 	else {
 		// For security, check that the instruction is in fact NOP
 		if (data->instruction != NOP) emitError(ERR_INTERNAL, NULL, "Immediate node is NULL for non-NOP instruction.");
@@ -200,7 +313,7 @@ static uint32_t encodeR(InstrNode* data) {
 	return encoding;
 }
 
-static uint32_t encodeM(InstrNode* data, SymbolTable* symbTable) {
+static uint32_t encodeM(InstrNode* data, uint32_t lp, SymbolTable* symbTable, RelocTable* relocTable) {
 	initScope("encodeM");
 
 	uint32_t encoding = 0x00000000;
@@ -239,7 +352,13 @@ static uint32_t encodeM(InstrNode* data, SymbolTable* symbTable) {
 	// imm is optional
 	int16_t imm9 = 0x0000;
 
-	if (immNode) imm9 = (int16_t) getImmediateEncoding(immNode, NTYPE_INT9, symbTable);
+	RelData reldata = {
+		.lp = lp,
+		.addend = 0,
+		.type = RELOC_TYPE_MEM,
+		.relocTable = relocTable
+	};
+	if (immNode) imm9 = (int16_t) getImmediateEncoding(immNode, NTYPE_INT9, symbTable, &reldata);
 
 	encoding = (opcode << 24) | ((imm9 & 0x1FF) << 15) | (rs << 10) | (rr << 5) | (rd << 0);
 
@@ -272,7 +391,7 @@ static uint32_t encodeBu(InstrNode* data) {
 	return encoding;
 }
 
-static uint32_t encodeBc(InstrNode* data, SymbolTable* symbTable) {
+static uint32_t encodeBc(InstrNode* data, uint32_t lp, SymbolTable* symbTable, RelocTable* relocTable) {
 	initScope("encodeBc");
 
 	uint32_t encoding = 0x00000000;
@@ -296,14 +415,24 @@ static uint32_t encodeBc(InstrNode* data, SymbolTable* symbTable) {
 
 	Node* labelNode = data->data.bcType.offset;
 
-	int32_t label = (int32_t) getImmediateEncoding(labelNode, NTYPE_INT19, symbTable);
-	log("Label value for Bc-type instruction: 0x%X", label);
+	
+	RelData reldata = {
+		.lp = lp,
+		.addend = 0,
+		.type = RELOC_TYPE_IR19,
+		.relocTable = relocTable
+	};
+	int32_t label = (int32_t) getImmediateEncoding(labelNode, NTYPE_INT19, symbTable, &reldata);
 
-	uint32_t lp = data->data.bcType.lp;
-	log("LP value for Bc-type instruction: 0x%X", lp);
+	int32_t offset = 0x0;
+	if (reldata.relocTable) {
+		log("Label value for Bc-type instruction: 0x%X", label);
 
-	int32_t offset = (label - lp) << 2;
-	log("Computed offset for Bc-type instruction: 0x%X", offset);
+		log("LP value for Bc-type instruction: 0x%X", lp);
+
+		offset = (label - lp) << 2;
+		log("Computed offset for Bc-type instruction: 0x%X", offset);
+	} else log("Bc-type instruction immediate resolved via relocation entry.");
 
 	encoding = (opcode << 24) | (offset & 0x7FFFF) << 5 | (cond & 0x0F);
 	log("Encoded Bc-type instruction `%s`: 0x%08X", INSTRUCTIONS[data->instruction], encoding);
@@ -311,7 +440,7 @@ static uint32_t encodeBc(InstrNode* data, SymbolTable* symbTable) {
 	return encoding;
 }
 
-static uint32_t encodeBi(InstrNode* data, SymbolTable* symbTable) {
+static uint32_t encodeBi(InstrNode* data, uint32_t lp, SymbolTable* symbTable, RelocTable* relocTable) {
 	initScope("encodeBi");
 
 	uint32_t encoding = 0x00000000;
@@ -328,19 +457,27 @@ static uint32_t encodeBi(InstrNode* data, SymbolTable* symbTable) {
 	}
 
 	Node* labelNode = data->data.biType.offset;
-
-	int32_t label = (int32_t) getImmediateEncoding(labelNode, NTYPE_INT19, symbTable);
+	
+	RelData reldata = {
+		.lp = lp,
+		.addend = 0,
+		.type = RELOC_TYPE_IR24,
+		.relocTable = relocTable
+	};
+	int32_t label = (int32_t) getImmediateEncoding(labelNode, NTYPE_INT19, symbTable, &reldata);
 	log("Label value for Bi-type instruction: 0x%X", label);
 
-	// label is just the address to go to
-	// It will be encoded as an offset from the current LP
-	// It is then saved as the offset * 4 and signed extended to 19 bits
+	int32_t offset = 0x0;
+	if (reldata.relocTable) {
+		// label is just the address to go to
+		// It will be encoded as an offset from the current LP
+		// It is then saved as the offset * 4 and signed extended to 19 bits
 
-	uint32_t lp = data->data.biType.lp;
-	log("LP value for Bi-type instruction: 0x%X", lp);
+		log("LP value for Bi-type instruction: 0x%X", lp);
 
-	int32_t offset = (label - lp) << 2;
-	log("Computed offset for Bi-type instruction: 0x%X", offset);
+		offset = (label - lp) << 2;
+		log("Computed offset for Bi-type instruction: 0x%X", offset);
+	} else log("Bi-type instruction immediate resolved via relocation entry.");
 
 	encoding = (opcode << 24) | ((offset & 0xFFFFFF));
 	log("Encoded Bi-type instruction `%s`: 0x%08X", INSTRUCTIONS[data->instruction], encoding);
@@ -388,13 +525,15 @@ static void gentext(Parser* parser, CodeGen* codegen, Node* ast) {
 
 	uint32_t encoding = 0x00000000;
 
+	uint32_t lp = codegen->text.instructionCount * 4;
+
 	switch (type) {
-		case I_TYPE: encoding = encodeI(ast->nodeData.instruction, parser->symbolTable); break;
+		case I_TYPE: encoding = encodeI(ast->nodeData.instruction, lp, parser->symbolTable, parser->relocTable); break;
 		case R_TYPE: encoding = encodeR(ast->nodeData.instruction); break;
-		case M_TYPE: encoding = encodeM(ast->nodeData.instruction, parser->symbolTable); break;
+		case M_TYPE: encoding = encodeM(ast->nodeData.instruction, lp, parser->symbolTable, parser->relocTable); break;
 		case BU_TYPE: encoding = encodeBu(ast->nodeData.instruction); break;
-		case BC_TYPE: encoding = encodeBc(ast->nodeData.instruction, parser->symbolTable); break;
-		case BI_TYPE: encoding = encodeBi(ast->nodeData.instruction, parser->symbolTable); break;
+		case BC_TYPE: encoding = encodeBc(ast->nodeData.instruction, lp, parser->symbolTable, parser->relocTable); break;
+		case BI_TYPE: encoding = encodeBi(ast->nodeData.instruction, lp, parser->symbolTable, parser->relocTable); break;
 		case S_TYPE: encoding = encodeS(ast->nodeData.instruction); break;
 		default: break;
 	}

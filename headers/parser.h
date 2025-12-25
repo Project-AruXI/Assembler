@@ -7,7 +7,7 @@
 #include "SectionTable.h"
 #include "StructTable.h"
 #include "DataTable.h"
-
+#include "RelocTable.h"
 
 
 struct LDIMM {
@@ -44,12 +44,13 @@ typedef struct Parser {
 	SymbolTable* symbolTable;
 	StructTable* structTable;
 	DataTable* dataTable;
+	RelocTable* relocTable;
 } Parser;
 
 
 Parser* initParser(Token** tokens, int tokenCount, ParserConfig config);
 void deinitParser(Parser* parser);
-void setTables(Parser* parser, SectionTable* sectionTable, SymbolTable* symbolTable, StructTable* structTable, DataTable* dataTable);
+void setTables(Parser* parser, SectionTable* sectionTable, SymbolTable* symbolTable, StructTable* structTable, DataTable* dataTable, RelocTable* relocTable);
 
 void parse(Parser* parser);
 
