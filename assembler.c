@@ -145,7 +145,7 @@ int main(int argc, char const* argv[]) {
 
 	CodeGen* codegen = initCodeGenerator(sectionTable, symbolTable, relocTable);
 	gencode(parser, codegen);
-	// writeBinary(codegen, config.outbin);
+	writeBinary(codegen, config.outbin);
 	
 	displaySymbolTable(symbolTable);
 	displaySectionTable(sectionTable);

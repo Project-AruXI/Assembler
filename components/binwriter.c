@@ -54,6 +54,7 @@ static char* nstrncat(char* dest, const char* src, size_t n) {
 	return dest;
 }
 
+
 static AOEFFSectHdr* generateSectionHeaders(SectionTable* sectTable, uint32_t sectOff) {
 	int sectEntries = 0;
 	for (int i = 0; i < 6; i++) {
@@ -74,7 +75,6 @@ static AOEFFSectHdr* generateSectionHeaders(SectionTable* sectTable, uint32_t se
 			.shSectName = {0},
 			.shSectOff = sectOffset,
 			.shSectSize = sectTable->entries[i].size,
-			.shSectRel = SE_SECT_UNDEF // No relocations for now
 		};
 
 		if (i == BSS_SECT_N) headers[hdrIdx].shSectOff = 0; // BSS section has no offset in the binary
@@ -113,15 +113,6 @@ static AOEFFSymEnt* generateSymbolTable(SymbolTable* symbTable, uint32_t strTabS
 	if (!strTab) emitError(ERR_MEM, NULL, "Failed to allocate memory for symbol string table.");
 
 	char* stStrs = strTab;
-	// First entry is empty
-	// entries[0] = (AOEFFSymbEntry) {
-	// 	.seSymbName = 0,
-	// 	.seSymbSize = 0,
-	// 	.seSymbVal = 0,
-	// 	.seSymbInfo = 0,
-	// 	.seSymbSect = SE_SECT_UNDEF
-	// };
-	// strTabPtr = nstrcat(strTabPtr, ""); // Empty string
 
 	uint32_t stridx = 0;
 
@@ -155,6 +146,130 @@ static AOEFFSymEnt* generateSymbolTable(SymbolTable* symbTable, uint32_t strTabS
 	return entries;
 }
 
+static AOEFFTRelTab* generateRelocTables(RelocTable* relocTable, char** outRelStrTab, uint32_t* outRelStrSize, uint32_t* outRelTabCount) {
+	AOEFFTRelTab* relocTables = (AOEFFTRelTab*) malloc(sizeof(AOEFFTRelTab) * 3);
+	if (!relocTables) emitError(ERR_MEM, NULL, "Failed to allocate memory for relocation tables.");
+
+
+	// Names are:
+	// ".trel.text", ".trel.data", ".trel.const"
+	// Allocate space for all three but only report what was used
+	char* relStrTab = (char*) malloc( sizeof(char) * (strlen(".trel.text") + 1 + strlen(".trel.data") + 1 + strlen(".trel.const") + 1) );
+	if (!relStrTab) emitError(ERR_MEM, NULL, "Failed to allocate memory for relocation string table.");
+
+	char* rstStrs = relStrTab;
+	uint32_t stridx = 0;
+
+	uint32_t relocTableCount = 0;
+
+	if (relocTable->textRelocTable.entryCount > 0) {
+		AOEFFTRelTab* textRelTab = &relocTables[relocTableCount];
+		textRelTab->relSect = TEXT_SECT_N;
+		textRelTab->relTabName = stridx;
+		textRelTab->relCount = relocTable->textRelocTable.entryCount;
+		textRelTab->relEntries = (AOEFFTRelEnt*) malloc(sizeof(AOEFFTRelEnt) * textRelTab->relCount);
+		if (!textRelTab->relEntries) emitError(ERR_MEM, NULL, "Failed to allocate memory for text relocation entries.");
+
+		for (uint32_t i = 0; i < textRelTab->relCount; i++) {
+			RelocEnt* srcEntry = relocTable->textRelocTable.entries[i];
+			AOEFFTRelEnt* destEntry = &textRelTab->relEntries[i];
+
+			*destEntry = (AOEFFTRelEnt) {
+				.reOff = srcEntry->offset,
+				.reSymb = srcEntry->symbolIdx,
+				.reType = (uint8_t) srcEntry->type,
+				.reAddend = srcEntry->addend
+			};
+		}
+
+		rstStrs = nstrcat(rstStrs, ".trel.text");
+		stridx += strlen(".trel.text") + 1;
+
+		relocTableCount++;
+	}
+
+	if (relocTable->dataRelocTable.entryCount > 0) {
+		AOEFFTRelTab* dataRelTab = &relocTables[relocTableCount];
+		dataRelTab->relSect = DATA_SECT_N;
+		dataRelTab->relTabName = stridx;
+		dataRelTab->relCount = relocTable->dataRelocTable.entryCount;
+		dataRelTab->relEntries = (AOEFFTRelEnt*) malloc(sizeof(AOEFFTRelEnt) * dataRelTab->relCount);
+		if (!dataRelTab->relEntries) emitError(ERR_MEM, NULL, "Failed to allocate memory for data relocation entries.");
+
+		for (uint32_t i = 0; i < dataRelTab->relCount; i++) {
+			RelocEnt* srcEntry = relocTable->dataRelocTable.entries[i];
+			AOEFFTRelEnt* destEntry = &dataRelTab->relEntries[i];
+
+			*destEntry = (AOEFFTRelEnt) {
+				.reOff = srcEntry->offset,
+				.reSymb = srcEntry->symbolIdx,
+				.reType = (uint8_t) srcEntry->type,
+				.reAddend = srcEntry->addend
+			};
+		}
+
+		rstStrs = nstrcat(rstStrs, ".trel.data");
+		stridx += strlen(".trel.data") + 1;
+
+		relocTableCount++;
+	}
+
+	if (relocTable->constRelocTable.entryCount > 0) {
+		AOEFFTRelTab* constRelTab = &relocTables[relocTableCount];
+		constRelTab->relSect = CONST_SECT_N;
+		constRelTab->relTabName = stridx;
+		constRelTab->relCount = relocTable->constRelocTable.entryCount;
+		constRelTab->relEntries = (AOEFFTRelEnt*) malloc(sizeof(AOEFFTRelEnt) * constRelTab->relCount);
+		if (!constRelTab->relEntries) emitError(ERR_MEM, NULL, "Failed to allocate memory for const relocation entries.");
+
+		for (uint32_t i = 0; i < constRelTab->relCount; i++) {
+			RelocEnt* srcEntry = relocTable->constRelocTable.entries[i];
+			AOEFFTRelEnt* destEntry = &constRelTab->relEntries[i];
+
+			*destEntry = (AOEFFTRelEnt) {
+				.reOff = srcEntry->offset,
+				.reSymb = srcEntry->symbolIdx,
+				.reType = (uint8_t) srcEntry->type,
+				.reAddend = srcEntry->addend
+			};
+		}
+
+		rstStrs = nstrcat(rstStrs, ".trel.const");
+		stridx += strlen(".trel.const") + 1;
+
+		relocTableCount++;
+	}
+
+	*outRelStrSize = stridx;
+	*outRelStrTab = relStrTab;
+	*outRelTabCount = relocTableCount;
+
+	rlog("%d relocation tables generated.\n", relocTableCount);
+	rlog("Relocation string table size: %d bytes.\n", stridx);
+
+	return relocTables;
+}
+
+static uint32_t getRelTabSize(AOEFFTRelTab* relocTables, uint32_t relTabCount) {
+	// Number of bytes that the whole relocation stuff uses
+	// This means that there is the size of relSect + relTabName first
+	// The after that, there is the array of entries, which is takes up number of entries (relCount) * size of each entry 
+	// relCount then follows that array
+	// All of this is per table with relTabCount tables
+
+	uint32_t totalSize = 0;
+
+	for (uint32_t i = 0; i < relTabCount; i++) {
+		AOEFFTRelTab* tab = &relocTables[i];
+		totalSize += sizeof(uint8_t); // relSect
+		totalSize += sizeof(uint32_t); // relTabName
+		totalSize += sizeof(AOEFFTRelEnt) * tab->relCount; // relEntries
+		totalSize += sizeof(uint32_t); // relCount
+	}
+
+	return totalSize;
+}
+
 void writeBinary(CodeGen* codegen, const char* filename) {
 	initScope("writeBinary");
 
@@ -172,9 +287,18 @@ void writeBinary(CodeGen* codegen, const char* filename) {
 	symbTableSize++;
 
 	uint32_t symbOff = sizeof(AOEFFhdr) + (sizeof(AOEFFSectHdr) * sectEntries);
+
 	uint32_t strTabOff = symbOff + (sizeof(AOEFFSymEnt) * symbTableSize);
-	
-	uint32_t symbStrsSize = getSymbolStringsSize(codegen->symbolTable);
+	uint32_t strTabSize = getSymbolStringsSize(codegen->symbolTable);
+
+	uint32_t relStrOff = strTabOff + strTabSize;
+	uint32_t relStrSize = 0;
+	uint32_t relTabOff = relStrOff + relStrSize;
+	uint32_t relTabCount = 0; // how many relocation tables there are
+	AOEFFRelStrTab relocStrTab;
+	relocStrTab.rstStrs = NULL;
+	AOEFFTRelTab* relocTables = generateRelocTables(codegen->relocTable, &relocStrTab.rstStrs, &relStrSize, &relTabCount);
+	uint32_t relTabSize = getRelTabSize(relocTables, relTabCount);
 
 	// Write header info
 	AOEFFhdr header = {
@@ -186,32 +310,53 @@ void writeBinary(CodeGen* codegen, const char* filename) {
 		.hSymbOff = symbOff,
 		.hSymbSize = symbTableSize,
 		.hStrTabOff = strTabOff,
-		.hStrTabSize = symbStrsSize,
-		.hRelDirOff = 0, // No relocations for now
-		.hRelDirSize = 0,
+		.hStrTabSize = strTabSize,
+		.hRelStrTabOff = relStrOff,
+		.hRelStrTabSize = relStrSize,
+		.hTRelTabOff = relTabOff,
+		.hTRelTabSize = relTabCount,
+		.hDRelTabOff = 0, // No dynamic stuff, so the stuff from here down is 0
+		.hDRelTabSize = 0,
+		.hDyLibTabOff = 0,
+		.hDyLibTabSize = 0,
+		.hDyLibStrTabOff = 0,
+		.hDyLibStrTabSize = 0,
+		.hImportTabOff = 0,
+		.hImportTabSize = 0
 	};
 	fwrite(&header, sizeof(AOEFFhdr), 1, outfile);
 
 	// Write section headers
-	AOEFFSectHdr* sectHeaders = generateSectionHeaders(codegen->sectionTable, strTabOff + symbStrsSize);
+	AOEFFSectHdr* sectHeaders = generateSectionHeaders(codegen->sectionTable, relTabOff + relTabSize);
 	fwrite(sectHeaders, sizeof(AOEFFSectHdr), sectEntries, outfile);
 	free(sectHeaders);
 
 	// Write symbol table
-	// char* stStrs = NULL; // The string table
 	AOEFFStrTab stringTable;
 	stringTable.stStrs = NULL;
-	AOEFFSymEnt* symbEntries = generateSymbolTable(codegen->symbolTable, symbStrsSize, &stringTable.stStrs);
+	AOEFFSymEnt* symbEntries = generateSymbolTable(codegen->symbolTable, strTabSize, &stringTable.stStrs);
 	fwrite(symbEntries, sizeof(AOEFFSymEnt), symbTableSize, outfile);
 	free(symbEntries);
 
 	// Write string table
-	fwrite(stringTable.stStrs, sizeof(char), symbStrsSize, outfile);
+	fwrite(stringTable.stStrs, sizeof(char), strTabSize, outfile);
 	free(stringTable.stStrs);
 
-	// TODO: Write relocation table
-	// TODO: Write dynamic library table and string table
-	// TODO: Write import table
+	// Write relocation string table
+	fwrite(relocStrTab.rstStrs, sizeof(char), relStrSize, outfile);
+	free(relocStrTab.rstStrs);
+
+	// Write relocation table
+	for (uint32_t i = 0; i < relTabCount; i++) {
+		AOEFFTRelTab* tab = &relocTables[i];
+		rlog("Writing relocation table for section %d with %d entries.\n", tab->relSect, tab->relCount);
+		fwrite(&tab->relSect, sizeof(uint8_t), 1, outfile);
+		fwrite(&tab->relTabName, sizeof(uint32_t), 1, outfile);
+		fwrite(tab->relEntries, sizeof(AOEFFTRelEnt), tab->relCount, outfile);
+		fwrite(&tab->relCount, sizeof(uint32_t), 1, outfile);
+		free(tab->relEntries);
+	}
+	free(relocTables);
 
 	// Write the payload
 	for (int i = 0; i < 6; i++) {
