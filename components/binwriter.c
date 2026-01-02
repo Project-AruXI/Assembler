@@ -65,8 +65,9 @@ static AOEFFSectHdr* generateSectionHeaders(SectionTable* sectTable, uint32_t se
 	AOEFFSectHdr* headers = (AOEFFSectHdr*) malloc(sizeof(AOEFFSectHdr) * sectEntries);
 	if (!headers) emitError(ERR_MEM, NULL, "Failed to allocate memory for section headers.");
 
-	// Offset where all sections start at, basically the end of the string table
+	// Offset where all sections start at, basically the end of the relocation table
 	uint32_t baseOffset = sectOff;
+	rlog("Base offset for all section data: 0x%x\n", baseOffset);
 	uint32_t sectOffset = baseOffset;
 	for (int i = 0, hdrIdx = 0; i < 6; i++) {
 		if (sectTable->entries[i].size == 0) continue;
@@ -293,12 +294,13 @@ void writeBinary(CodeGen* codegen, const char* filename) {
 
 	uint32_t relStrOff = strTabOff + strTabSize;
 	uint32_t relStrSize = 0;
-	uint32_t relTabOff = relStrOff + relStrSize;
 	uint32_t relTabCount = 0; // how many relocation tables there are
 	AOEFFRelStrTab relocStrTab;
 	relocStrTab.rstStrs = NULL;
 	AOEFFTRelTab* relocTables = generateRelocTables(codegen->relocTable, &relocStrTab.rstStrs, &relStrSize, &relTabCount);
+	uint32_t relTabOff = relStrOff + relStrSize;
 	uint32_t relTabSize = getRelTabSize(relocTables, relTabCount);
+	rlog("relTabOff: 0x%x; relTabSize: %d\n", relTabOff, relTabSize);
 
 	// Write header info
 	AOEFFhdr header = {
@@ -352,8 +354,8 @@ void writeBinary(CodeGen* codegen, const char* filename) {
 		rlog("Writing relocation table for section %d with %d entries.\n", tab->relSect, tab->relCount);
 		fwrite(&tab->relSect, sizeof(uint8_t), 1, outfile);
 		fwrite(&tab->relTabName, sizeof(uint32_t), 1, outfile);
-		fwrite(tab->relEntries, sizeof(AOEFFTRelEnt), tab->relCount, outfile);
 		fwrite(&tab->relCount, sizeof(uint32_t), 1, outfile);
+		fwrite(tab->relEntries, sizeof(AOEFFTRelEnt), tab->relCount, outfile);
 		free(tab->relEntries);
 	}
 	free(relocTables);
