@@ -120,12 +120,15 @@ static AOEFFSymEnt* generateSymbolTable(SymbolTable* symbTable, uint32_t strTabS
 	for (uint32_t i = 0; i < symbTable->size; i++) {
 		symb_entry_t* symb = symbTable->entries[i];
 
+		uint32_t sect = GET_SECTION(symb->flags);
+		if (sect == S_UNDEF) sect = SE_SECT_UNDEF; // Undefined section in AOEFF
+
 		entries[i] = (AOEFFSymEnt) {
 			.seSymbName = stridx,
 			.seSymbSize = symb->size,
 			.seSymbVal = symb->value.val,
 			.seSymbInfo = SE_SET_INFO(GET_MAIN_TYPE(symb->flags), GET_LOCALITY(symb->flags)),
-			.seSymbSect = GET_SECTION(symb->flags)
+			.seSymbSect = sect
 		};
 		stStrs = nstrcat(stStrs, symb->name);
 		stridx += strlen(symb->name) + 1;
@@ -348,13 +351,17 @@ void writeBinary(CodeGen* codegen, const char* filename) {
 	fwrite(relocStrTab.rstStrs, sizeof(char), relStrSize, outfile);
 	free(relocStrTab.rstStrs);
 
+	uint8_t zeroBufferPadding[4] = {0, 0, 0, 0};
+
 	// Write relocation table
 	for (uint32_t i = 0; i < relTabCount; i++) {
 		AOEFFTRelTab* tab = &relocTables[i];
 		rlog("Writing relocation table for section %d with %d entries.\n", tab->relSect, tab->relCount);
 		fwrite(&tab->relSect, sizeof(uint8_t), 1, outfile);
+		fwrite(zeroBufferPadding, sizeof(uint8_t), 3, outfile); // padding
 		fwrite(&tab->relTabName, sizeof(uint32_t), 1, outfile);
 		fwrite(&tab->relCount, sizeof(uint32_t), 1, outfile);
+		fwrite(zeroBufferPadding, sizeof(uint8_t), 4, outfile); // padding
 		fwrite(tab->relEntries, sizeof(AOEFFTRelEnt), tab->relCount, outfile);
 		free(tab->relEntries);
 	}
