@@ -266,9 +266,11 @@ static uint32_t getRelTabSize(AOEFFTRelTab* relocTables, uint32_t relTabCount) {
 	for (uint32_t i = 0; i < relTabCount; i++) {
 		AOEFFTRelTab* tab = &relocTables[i];
 		totalSize += sizeof(uint8_t); // relSect
+		totalSize += 3; // padding
 		totalSize += sizeof(uint32_t); // relTabName
-		totalSize += sizeof(AOEFFTRelEnt) * tab->relCount; // relEntries
 		totalSize += sizeof(uint32_t); // relCount
+		totalSize += 4; // padding
+		totalSize += sizeof(AOEFFTRelEnt) * tab->relCount; // relEntries
 	}
 
 	return totalSize;
