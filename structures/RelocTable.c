@@ -75,6 +75,7 @@ void addRelocEntry(RelocTable* relocTable, uint8_t section, RelocEnt* entry) {
 	}
 	entries[*entryCount] = entry;
 	(*entryCount)++;
+	log("Added relocation entry at offset 0x%08x in section %d", entry->offset, section);
 }
 
 
