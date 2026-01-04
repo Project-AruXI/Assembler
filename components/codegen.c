@@ -167,45 +167,6 @@ static uint32_t getImmediateEncoding(Node* immNode, NumType expectedType, Symbol
 
 	log("Immediate encoding value: 0x%X", value);
 
-	// Branch instructions always emit a relocation (but keep the evald immediate)
-	// Whether it is a branch instruction is encoded in the meaning of the relocation type (RELOC_IR19 or RELOC_IR24)
-	if (reldata->type == RELOC_TYPE_IR19 || reldata->type == RELOC_TYPE_IR24) {
-		detail("Adding relocation entry for branch instruction immediate.");
-
-		// Relocations allow a limited expression
-		// So something like `beq LABEL + 4` is allowed but `beq LABEL - (4 / 2)` is not
-		// The expression has already been evaluated but the error still occurs
-		// The function `getExtern` will be used, even though it is not really an extern
-		// It uses the logic needed, maybe need to rename it????
-		Node* branchtoNode = getExternSymbol(immNode);
-		if (!branchtoNode) {
-			// This means that the expression was too complex
-			emitError(ERR_INVALID_EXPRESSION, &linedata, "Branch immediate expression is too complex for relocation. Only simple symbol +/- addend expressions are allowed.");
-		}
-
-		// In the case that the expression has a number, it is the addend
-		int32_t addend = 0;
-
-		if (immNode->nodeType == ND_OPERATOR) {
-			OpNode* opData = immNode->nodeData.operator;
-			if (opData->data.binary.left == branchtoNode && opData->data.binary.right->nodeType == ND_NUMBER) {
-				addend = opData->data.binary.right->nodeData.number->value.int32Value;
-			} else if (opData->data.binary.right == branchtoNode && opData->data.binary.left->nodeType == ND_NUMBER) {
-				addend = opData->data.binary.left->nodeData.number->value.int32Value;
-			}
-		}
-
-		SymbNode* symbData = branchtoNode->nodeData.symbol;
-		if (!symbData) emitError(ERR_INTERNAL, NULL, "Symbol node data is NULL.");
-		int idx = symbData->symbTableIndex;
-		if (idx < 0 || idx >= (int)symbTable->size) emitError(ERR_INTERNAL, NULL, "Symbol index %d out of bounds in symbol table.", idx);
-		symb_entry_t* entry = symbTable->entries[idx];
-		if (!entry) emitError(ERR_INTERNAL, NULL, "Symbol table entry at index %d is NULL.", idx);
-
-		reldata->addend = addend;
-		RelocEnt* reloc = initRelocEntry(reldata->lp, entry->symbTableIndex, reldata->type, addend);
-		addRelocEntry(reldata->relocTable, TEXT_SECT_N, reloc);
-	}
 
 	return value;
 }
