@@ -42,23 +42,23 @@ RelocEnt* initRelocEntry(uint32_t offset, uint32_t symbolIdx, reloc_type_t type,
 }
 
 void addRelocEntry(RelocTable* relocTable, uint8_t section, RelocEnt* entry) {
-	RelocEnt** entries = NULL;
+	RelocEnt*** entries = NULL;
 	uint32_t* entryCount = NULL;
 	uint32_t* entryCapacity = NULL;
 
 	switch (section) {
 		case 0: // Data section
-			entries = relocTable->dataRelocTable.entries;
+			entries = &relocTable->dataRelocTable.entries;
 			entryCount = &relocTable->dataRelocTable.entryCount;
 			entryCapacity = &relocTable->dataRelocTable.entryCapacity;
 			break;
 		case 1: // Const section
-			entries = relocTable->constRelocTable.entries;
+			entries = &relocTable->constRelocTable.entries;
 			entryCount = &relocTable->constRelocTable.entryCount;
 			entryCapacity = &relocTable->constRelocTable.entryCapacity;
 			break;
 		case 3: // Text section
-			entries = relocTable->textRelocTable.entries;
+			entries = &relocTable->textRelocTable.entries;
 			entryCount = &relocTable->textRelocTable.entryCount;
 			entryCapacity = &relocTable->textRelocTable.entryCapacity;
 			break;
@@ -69,11 +69,11 @@ void addRelocEntry(RelocTable* relocTable, uint8_t section, RelocEnt* entry) {
 
 	if (*entryCount == *entryCapacity) {
 		*entryCapacity = (*entryCapacity == 0) ? 4 : (*entryCapacity * 2);
-		RelocEnt** temp = (RelocEnt**) realloc(entries, sizeof(RelocEnt*) * (*entryCapacity));
+		RelocEnt** temp = (RelocEnt**) realloc(*entries, sizeof(RelocEnt*) * (*entryCapacity));
 		if (!temp) emitError(ERR_MEM, NULL, "Failed to reallocate memory for relocation entries.");
-		entries = temp;
+		*entries = temp;
 	}
-	entries[*entryCount] = entry;
+	(*entries)[*entryCount] = entry;
 	(*entryCount)++;
 	log("Added relocation entry at offset 0x%08x in section %d", entry->offset, section);
 }
