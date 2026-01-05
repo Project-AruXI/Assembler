@@ -587,7 +587,13 @@ void handleM(Parser* parser, Node* instrRoot) {
 		instrRoot->nodeData.instruction->data.mType.xi = NULL;
 		instrRoot->nodeData.instruction->data.mType.imm = immExprRoot;
 
+		// This is an immediate load, so decomposition is a must
+		// However, evaluation will not occur until the very end, so hold on
 		addLD(parser, instrRoot);
+		// Even though decomposition did not occur, pretend it did
+		// Increment the LP accordingly
+		// 6 instructions were added but the LP was already increased for this LD, so it takes care of one
+		parser->sectionTable->entries[parser->sectionTable->activeSection].lp += (4 * 5);
 
 		nextToken = parser->tokens[parser->currentTokenIndex];
 		if (nextToken->type != TK_NEWLINE) emitError(ERR_INVALID_SYNTAX, &linedata, "Expected newline after immediate expression, got `%s`.", nextToken->lexeme);

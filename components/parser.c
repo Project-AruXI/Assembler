@@ -22,6 +22,9 @@ Parser* initParser(Token** tokens, int tokenCount, ParserConfig config) {
 	parser->astCount = 0;
 	parser->astCapacity = 4;
 
+	parser->ldimmList = NULL;
+	parser->ldimmTail = NULL;
+
 	parser->config = config;
 
 	parser->processing = true;
@@ -249,77 +252,36 @@ static void parseDirective(Parser* parser) {
 	addAst(parser, directiveRoot);
 }
 
+static void handleLDImmMove(Parser* parser, Node* ldInstrNode) {
+	initScope("handleLDImmMove");
 
-static void handleLDImm(Parser* parser, Node* ldInstrNode) {
-	initScope("handleLDImm");
-
-	// These are `ld reg, imm` instructions where `imm` is now(?) known
-	// Only case they are not known is if the symbol is an extern, deal with it later, for now assume all defined
-	// `imm` is an expression tree, it needs to be evald (it results into an address)
-	// Depending on the result size:
-	// If `imm` (an address) is ...
-
-	// TODO
-	// This becomes tricky actually
-	// In the case that it can be IR-relative, the offset is so small (9 bits signed) that realistically, most addresses won't fit
-	// Even if it can fit, the linker will add more text and data that the offset becomes invalid
-	// This would require the use of relocation records, telling the linker that there is IR-relative
-	// For now, skip the IR-relative and just do decomposition
-	emitWarning(WARN_UNIMPLEMENTED, NULL, "LD immediate form instruction to IR-relative not yet implemented!");
-
-	Node* immNode = ldInstrNode->nodeData.instruction->data.mType.imm;
-	bool evald = evaluateExpression(immNode, parser->symbolTable);
-	linedata_ctx linedata = {
-		.linenum = ldInstrNode->token->linenum,
-		.source = ssGetString(ldInstrNode->token->sstring)
-	};
-	if (!evald) emitError(ERR_INVALID_EXPRESSION, &linedata, "Failed to evaluate immediate expression for LD immediate form instruction.");
-
-	// uint32_t immValue = immNode->nodeData.number->value;
-
-	// if (immValue <= 0xFFF) {
-	// 	// No need to decompose
-	// 	log("LD immediate/move form instruction immediate fits in 12 bits, no decomposition needed.");
-	// 	return;
-	// }
-
-	// log("Decomposing LD immediate form instruction with immediate: 0x%08X", immValue);
-
-	// decomposeLD uses the value in immNode to create the decomposition instructions
-	// Since this function is only for ld imm, the imm is an address
-	// This calls the need for relocation records to be made
-	// However, the imm should be set to 0 so it can be fixed up by the linker (similar to how gcc/clang do it)
-	// Since the node value is used, this will need to be set to 0
-	// But this will overwrite the evald expression, so it will need to be saved
-
-	uint32_t savedImmValue = 0;
-
-	// The node can either be an operator node or a number node
-	if (immNode->nodeType == ND_NUMBER) {
-		savedImmValue = immNode->nodeData.number->value.uint32Value;
-		immNode->nodeData.number->value.uint32Value = 0;
-	} else if (immNode->nodeType == ND_OPERATOR) {
-		savedImmValue = immNode->nodeData.operator->value;
-		immNode->nodeData.operator->value = 0;
-	}
-
-	// TODO: relocation records
-
-
-	decomposeLD(ldInstrNode, ldInstrNode->nodeData.instruction->data.mType.xds, immNode);
-	// Update the LP, reminder that even though 6 instructions were added, this instruction already took care of one
-	parser->sectionTable->entries[ldInstrNode->nodeData.instruction->section].lp += (4 * 5);
-}
-
-static void handleLDMove(Parser* parser, Node* ldInstrNode) {
-	initScope("handleLDMove");
-
-	// Similar to handleLDImm, but for move form
 	// This is just a defered decomposition from the handler (refer to comment)
 
-	Node* literalNode = ldInstrNode->nodeData.instruction->data.mType.imm;
-	// Since this is for `ld reg, =imm`, the `imm` field actually holds the literal operator
-	Node* immNode = literalNode->nodeData.operator->data.unary.operand;
+	/**
+	 * LD move can:
+	 * - move a local absolute value
+	 * - move a local address
+	 * - move an extern (but absolute) value
+	 * - move an extern (but address) value
+	 * 
+	 * No relocation is needed for local absolute, but it is needed for local address
+	 * For externs, since the assembler cannot know the type, it will emit a relocation for both (absolute or address)
+	 * Leave it to the linker that, once knowing all symbols, determine whether that relocation is needed or not
+	 * 
+	 * Hence:
+	 * - local absolute: decomp only
+	 * - local address: reloc + decomp
+	 * - extern absolute: reloc + decomp
+	 * - extern address: reloc + decomp
+	 */
+
+
+	Node* literalOrImmNode = ldInstrNode->nodeData.instruction->data.mType.imm;
+	// Since this could be either =imm or imm, check whether the first node is =
+	// In that case, the true imm is its child
+	Node* immNode = NULL;
+	if (literalOrImmNode->token->type == TK_LITERAL) immNode = literalOrImmNode->nodeData.operator->data.unary.operand;
+	else immNode = literalOrImmNode;
 
 	bool evald = evaluateExpression(immNode, parser->symbolTable);
 	// When evald is false, it means that an undefined symbol was used
@@ -327,16 +289,25 @@ static void handleLDMove(Parser* parser, Node* ldInstrNode) {
 	// The expression is at maximum two operands with either + or - as the operand
 	// One operand must be a symbol, the other must be a number
 	// The symbol has been declared extern
-	// A relocation record will be made for this
-	// However, since this is for loading an immediate value and not an address, a relocation is not needed
-	//   when it can be evald
+	// It needs to also apply to local address even thought it is not extern
+
 	linedata_ctx linedata = {
 		.linenum = ldInstrNode->token->linenum,
 		.source = ssGetString(ldInstrNode->token->sstring)
 	};
 
-	if (!evald) {
-		Node* externSymbol = getExternSymbol(immNode);
+	Node* externSymbol = getExternSymbol(immNode);
+	bool isLocalAddress = false;
+	if (externSymbol) {
+		int idx = externSymbol->nodeData.symbol->symbTableIndex;
+		symb_entry_t* symbEntry = parser->symbolTable->entries[idx];
+		if (GET_LOCALITY(symbEntry->flags) == L_LOC && GET_MAIN_TYPE(symbEntry->flags) != M_ABS) {
+			isLocalAddress = true;
+			log("LD move form instruction immediate is a local address. Will do relocation as well.");
+		}
+	}
+
+	if (!evald || isLocalAddress) {
 		if (!externSymbol) {
 			linedata_ctx linedata = {
 				.linenum = ldInstrNode->token->linenum,
@@ -345,20 +316,22 @@ static void handleLDMove(Parser* parser, Node* ldInstrNode) {
 			emitError(ERR_INVALID_EXPRESSION, &linedata, "Failed to get extern symbol for LD immediate form instruction.");
 		}
 
-		// Make sure the symbol is extern
 		symb_entry_t* symbEntry = getSymbolEntry(parser->symbolTable, externSymbol->token->lexeme);
 		if (!symbEntry) {
 			// If no entry at this point (all symbols should have been collected)
 			// Something went horribly wrong
 			emitError(ERR_INTERNAL, &linedata, "Failed to find symbol table entry for extern symbol in LD immediate form instruction.");
 		}
-
-		uint8_t sect = GET_SECTION(symbEntry->flags);
-		if (sect != S_UNDEF) {
-			emitError(ERR_INVALID_EXPRESSION, &linedata, "Undefined symbol `%s` used in LD move form instruction is not declared extern.", externSymbol->token->lexeme);
+		
+		// Make sure the symbol is extern in the case of no result
+		if (!evald) {
+			uint8_t sect = GET_SECTION(symbEntry->flags);
+			if (sect != S_UNDEF) {
+				emitError(ERR_INVALID_EXPRESSION, &linedata, "Undefined symbol `%s` used in LD move form instruction is not declared extern.", externSymbol->token->lexeme);
+			}
 		}
 
-		
+
 		int32_t addend = 0;
 		// Check if there is an operator node
 		// In that case, get the number node
@@ -379,12 +352,10 @@ static void handleLDMove(Parser* parser, Node* ldInstrNode) {
 		} else {
 			emitError(ERR_INTERNAL, &linedata, "Unexpected node type in LD move form instruction immediate field.");
 		}
-		
+
 		RelocEnt* reloc = initRelocEntry(parser->sectionTable->entries[parser->sectionTable->activeSection].lp, symbEntry->symbTableIndex, RELOC_TYPE_DECOMP, addend);
 		addRelocEntry(parser->relocTable, parser->sectionTable->activeSection, reloc);
 	}
-
-	// As per the comment above, when it can be evald, use the number as is, no relocation
 
 	decomposeLD(ldInstrNode, ldInstrNode->nodeData.instruction->data.mType.xds, immNode);
 }
@@ -475,12 +446,7 @@ void parse(Parser* parser) {
 	// Try to fix the LD imm/move instructions
 	struct LDIMM* current = parser->ldimmList;
 	while (current) {
-		// Depending on the LD type
-		// If immediate form, call handleLDImm
-		// If move form, call handleLDMove
-
-		if (current->ldInstr->nodeData.instruction->data.mType.imm->token->type == TK_LITERAL) handleLDMove(parser, current->ldInstr);
-		else handleLDImm(parser, current->ldInstr);
+		handleLDImmMove(parser, current->ldInstr);
 
 		current = current->next;
 	}
