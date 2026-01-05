@@ -1,10 +1,12 @@
 .extern ABSVAL
 .extern ADDRVAL
 
+.glob _init
+
 .set LOCABS, #0xffff
 
 .text
-	main:
+	_init:
 		ld x0, =LOCABS % move big imm to x0
 		ld x0, =LOCADDR % move addr to x0, emit rel
 		ld x0, LOCADDR % move addr to x0, loads from it, emit rel
