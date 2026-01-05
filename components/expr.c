@@ -55,22 +55,31 @@ static Node* parsePrimary(Parser* parser) {
 			if (token->lexeme[0] == '#') {
 				// Make sure it applies to true "immediates"
 				if (token->lexeme[1] == '0' && (token->lexeme[2] == 'x' || token->lexeme[2] == 'X')) {
-					n = (int) strtol(token->lexeme + 1, NULL, 0); // base 0 auto-detects 0x as hex
+					unsigned long u = strtoul(token->lexeme + 1, NULL, 0);
+					if (u <= 0xFF) n = (int)(int8_t)u;
+					else if (u <= 0xFFFF) n = (int)(int16_t)u;
+					else n = (int)(int32_t)u; 
 				} else n = atoi(token->lexeme + 1); // skip the '#'
 				goto numCase;
 			}
 		case TK_INTEGER:
 			if (token->lexeme[0] == '0' && (token->lexeme[1] == 'x' || token->lexeme[1] == 'X')) {
-				n = (int) strtol(token->lexeme, NULL, 0);
+				unsigned long u = strtoul(token->lexeme, NULL, 0);
+				if (u <= 0xFF) n = (int)(int8_t)u;
+				else if (u <= 0xFFFF) n = (int)(int16_t)u;
+				else n = (int)(int32_t)u; 
 			} else n = atoi(token->lexeme);
 			numCase:
 			node = initASTNode(AST_LEAF, ND_NUMBER, token, NULL);
 			NumType numType;
 			if (n >= -128 && n <= 127) {
+				rlog("Detected tyoe INT8 for number %d (0x%x)", n, n);
 				numType = NTYPE_INT8;
 			} else if (n >= -32768 && n <= 32767) {
+				rlog("Detected tyoe INT16 for number %d (0x%x)", n, n);
 				numType = NTYPE_INT16;
 			} else {
+				rlog("Detected tyoe INT32 for number %d (0x%x)", n, n);
 				numType = NTYPE_INT32;
 			}
 			NumNode* numData = initNumberNode(numType, n, 0.0f);
