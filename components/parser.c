@@ -252,7 +252,7 @@ static void parseDirective(Parser* parser) {
 	addAst(parser, directiveRoot);
 }
 
-static void handleLDImmMove(Parser* parser, Node* ldInstrNode) {
+static void handleLDImmMove(Parser* parser, Node* ldInstrNode, uint32_t lp) {
 	initScope("handleLDImmMove");
 
 	// This is just a defered decomposition from the handler (refer to comment)
@@ -353,8 +353,8 @@ static void handleLDImmMove(Parser* parser, Node* ldInstrNode) {
 			emitError(ERR_INTERNAL, &linedata, "Unexpected node type in LD move form instruction immediate field.");
 		}
 
-		RelocEnt* reloc = initRelocEntry(parser->sectionTable->entries[parser->sectionTable->activeSection].lp, symbEntry->symbTableIndex, RELOC_TYPE_DECOMP, addend);
-		addRelocEntry(parser->relocTable, parser->sectionTable->activeSection, reloc);
+		RelocEnt* reloc = initRelocEntry(lp, symbEntry->symbTableIndex, RELOC_TYPE_DECOMP, addend);
+		addRelocEntry(parser->relocTable, ldInstrNode->nodeData.instruction->section, reloc);
 	}
 
 	decomposeLD(ldInstrNode, ldInstrNode->nodeData.instruction->data.mType.xds, immNode);
@@ -446,7 +446,7 @@ void parse(Parser* parser) {
 	// Try to fix the LD imm/move instructions
 	struct LDIMM* current = parser->ldimmList;
 	while (current) {
-		handleLDImmMove(parser, current->ldInstr);
+		handleLDImmMove(parser, current->ldInstr, current->lp);
 
 		current = current->next;
 	}
@@ -469,6 +469,7 @@ void addLD(Parser* parser, Node* ldInstrNode) {
 	if (!newLDIMM) emitError(ERR_MEM, NULL, "Failed to allocate memory for LDIMM node.");
 	newLDIMM->ldInstr = ldInstrNode;
 	newLDIMM->next = NULL;
+	newLDIMM->lp = parser->sectionTable->entries[parser->sectionTable->activeSection].lp;
 
 	if (!parser->ldimmList) {
 		parser->ldimmList = newLDIMM;

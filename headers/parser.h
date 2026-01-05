@@ -12,6 +12,7 @@
 
 struct LDIMM {
 	Node* ldInstr;
+	uint32_t lp;
 	struct LDIMM* next;
 };
 
