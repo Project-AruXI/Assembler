@@ -1,3 +1,5 @@
+#include <string.h>
+
 #include "codegen.h"
 #include "expr.h"
 #include "diagnostics.h"
@@ -622,6 +624,7 @@ static void genBytes(CodeGen* codegen, data_entry_t* entry, data_entry_t** entri
 
 		// Need to evaluate the expression
 		bool evald = evaluateExpression(byteExpr, codegen->symbolTable);
+		// TODO: have relocations
 		if (!evald) emitError(ERR_INVALID_EXPRESSION, &linedata, "Could not evaluate immediate expression.");
 
 		// The byteExpr node can either be a number itself, an operator, or a symbol, so get its value accordingly
@@ -632,17 +635,17 @@ static void genBytes(CodeGen* codegen, data_entry_t* entry, data_entry_t** entri
 				NumNode* numData = byteExpr->nodeData.number;
 				if (!numData) emitError(ERR_INTERNAL, NULL, "Number node data is NULL.");
 				// Check type
-				if (numData->type != NTYPE_INT8) { // Oops, do I really need UINT8?????
+				if (numData->type > NTYPE_INT8) {
 					emitError(ERR_INVALID_TYPE, &linedata, "Data entry number node is not of byte type.");
 				}
-				byteValue = (uint8_t) numData->value.int32Value; // Just take the lowest byte
+				byteValue = (uint8_t) numData->value.int8Value; // Just take the lowest byte
 				break;
 			}
 			case ND_OPERATOR: {
 				OpNode* opData = (OpNode*) byteExpr->nodeData.operator;
 				if (!opData) emitError(ERR_INTERNAL, NULL, "Operator node data is NULL.");
 				// Check type
-				if (opData->valueType != NTYPE_INT8) {
+				if (opData->valueType > NTYPE_INT8) {
 					emitError(ERR_INVALID_TYPE, &linedata, "Data entry operator node is not of byte type.");
 				}
 				byteValue = (uint8_t) opData->value; // Just take the lowest byte
@@ -673,6 +676,295 @@ static void genBytes(CodeGen* codegen, data_entry_t* entry, data_entry_t** entri
 		codegenData[*codegenDataCount] = byteValue;
 		(*codegenDataCount)++;
 		log("    Wrote byte 0x%02X to %s section in codegen.", byteValue, isData ? "data" : "const");
+	}
+}
+
+static void genHwords(CodeGen* codegen, data_entry_t* entry, data_entry_t** entries, int* _entriesSize, int* _entriesCapacity, int* _idx, bool isData) {
+	initScope("genHwords");
+
+	log("  Generating halfword data entry at address 0x%08X with size %d bytes.", entry->addr, entry->size);
+
+	linedata_ctx linedata = {
+		.linenum = entry->linenum,
+		.source = ssGetString(entry->source)
+	};
+
+	uint8_t* codegenData= NULL;
+	int* codegenDataCount = NULL;
+	int* codegenDataCapacity = NULL;
+
+	if (isData) {
+		codegenData = codegen->data.data;
+		codegenDataCount = &codegen->data.dataCount;
+		codegenDataCapacity = &codegen->data.dataCapacity;
+	} else {
+		codegenData = codegen->consts.data;
+		codegenDataCount = &codegen->consts.dataCount;
+		codegenDataCapacity = &codegen->consts.dataCapacity;
+	}
+
+	// Write the halfwords to the appropriate section
+	for (int i = 0; i < entry->size / 2; i++) {
+		Node* hwordExpr = entry->data[i];
+
+		// Need to evaluate the expression
+		bool evald = evaluateExpression(hwordExpr, codegen->symbolTable);
+		// TODO: have relocations
+		if (!evald) emitError(ERR_INVALID_EXPRESSION, &linedata, "Could not evaluate immediate expression.");
+
+		// The hwordExpr node can either be a number itself, an operator, or a symbol, so get its value accordingly
+		uint16_t hwordValue = 0x0000;
+		switch (hwordExpr->nodeType) {
+			case ND_NUMBER: {
+				NumNode* numData = hwordExpr->nodeData.number;
+				if (!numData) emitError(ERR_INTERNAL, NULL, "Number node data is NULL.");
+				// Check type
+				if (numData->type > NTYPE_INT16) {
+					emitError(ERR_INVALID_TYPE, &linedata, "Data entry number node is not of halfword type.");
+				}
+				hwordValue = (uint16_t) numData->value.int16Value; // Just take the lowest 2 bytes
+				break;
+			}
+			case ND_OPERATOR: {
+				OpNode* opData = (OpNode*) hwordExpr->nodeData.operator;
+				if (!opData) emitError(ERR_INTERNAL, NULL, "Operator node data is NULL.");
+				// Check type
+				if (opData->valueType > NTYPE_INT16) {
+					emitError(ERR_INVALID_TYPE, &linedata, "Data entry operator node is not of halfword type.");
+				}
+				hwordValue = (uint16_t) opData->value; // Just take the lowest 2 bytes
+				break;
+			}
+			case ND_SYMB: {
+				SymbNode* symbData = (SymbNode*) hwordExpr->nodeData.symbol;
+				if (!symbData) emitError(ERR_INTERNAL, NULL, "Symbol node data is NULL.");
+				int idx = symbData->symbTableIndex;
+				if (idx < 0 || idx >= (int)codegen->symbolTable->size) {
+					emitError(ERR_INTERNAL, NULL, "Symbol index %d out of bounds in symbol table.", idx);
+				}
+				symb_entry_t* entry = codegen->symbolTable->entries[idx];
+				if (!entry) {
+					emitError(ERR_INTERNAL, NULL, "Symbol table entry at index %d is NULL.", idx);
+				}
+				// if (!GET_DEFINED(entry->flags)) {
+				// 	// This should have been taken care of by eval????
+				// 	emitError(ERR_UNDEFINED, &linedata, "Symbol `%s` is not defined.", entry->name);
+				// }
+				hwordValue = (uint16_t) entry->value.val; // Just take the lowest 2 bytes
+				break;
+			}
+			default:
+				emitError(ERR_INTERNAL, &linedata, "Data entry expression is of invalid type.");
+		}
+		// Write the halfword in little-endian
+		// Ensure enough capacity for 2 bytes
+		for (int b = 0; b < 2; b++) {
+			if (*codegenDataCount == *codegenDataCapacity) {
+				*codegenDataCapacity *= 2;
+				uint8_t* temp = (uint8_t*) realloc(codegenData, sizeof(uint8_t) * (*codegenDataCapacity));
+				if (!temp) emitError(ERR_MEM, NULL, "Failed to reallocate memory for data/const section.");
+				codegenData = temp;
+
+				if (isData) codegen->data.data = codegenData;
+				else codegen->consts.data = codegenData;
+			}
+
+			codegenData[*codegenDataCount] = (hwordValue >> (8 * b)) & 0xFF;
+			(*codegenDataCount)++;
+		}
+		log("    Wrote halfword 0x%04X to %s section in codegen.", hwordValue, isData ? "data" : "const");
+	}
+}
+
+static void genWords(CodeGen* codegen, data_entry_t* entry, data_entry_t** entries, int* _entriesSize, int* _entriesCapacity, int* _idx, bool isData) {
+	initScope("genWords");
+
+	log("  Generating word data entry at address 0x%08X with size %d bytes.", entry->addr, entry->size);
+
+	linedata_ctx linedata = {
+		.linenum = entry->linenum,
+		.source = ssGetString(entry->source)
+	};
+
+	uint8_t* codegenData= NULL;
+	int* codegenDataCount = NULL;
+	int* codegenDataCapacity = NULL;
+
+	if (isData) {
+		codegenData = codegen->data.data;
+		codegenDataCount = &codegen->data.dataCount;
+		codegenDataCapacity = &codegen->data.dataCapacity;
+	} else {
+		codegenData = codegen->consts.data;
+		codegenDataCount = &codegen->consts.dataCount;
+		codegenDataCapacity = &codegen->consts.dataCapacity;
+	}
+
+	// Write the words to the appropriate section
+	for (int i = 0; i < entry->size / 4; i++) {
+		Node* wordExpr = entry->data[i];
+
+		// Need to evaluate the expression
+		bool evald = evaluateExpression(wordExpr, codegen->symbolTable);
+		// TODO: have relocations
+		if (!evald) emitError(ERR_INVALID_EXPRESSION, &linedata, "Could not evaluate immediate expression.");
+
+		// The wordExpr node can either be a number itself, an operator, or a symbol, so get its value accordingly
+		uint32_t wordValue = 0x00000000;
+		switch (wordExpr->nodeType) {
+			case ND_NUMBER: {
+				NumNode* numData = wordExpr->nodeData.number;
+				if (!numData) emitError(ERR_INTERNAL, NULL, "Number node data is NULL.");
+				// Check type, not really needed since max it can go is int32 but maybe in the future for aru64
+				if (numData->type > NTYPE_INT32) {
+					emitError(ERR_INVALID_TYPE, &linedata, "Data entry number node is not of word type.");
+				}
+				wordValue = numData->value.uint32Value;
+				break;
+			}
+			case ND_OPERATOR: {
+				OpNode* opData = (OpNode*) wordExpr->nodeData.operator;
+				if (!opData) emitError(ERR_INTERNAL, NULL, "Operator node data is NULL.");
+				// Check type, not really needed since max it can go is int32 but maybe in the future for aru64
+				if (opData->valueType > NTYPE_INT32) {
+					emitError(ERR_INVALID_TYPE, &linedata, "Data entry operator node is not of word type.");
+				}
+				wordValue = opData->value;
+				break;
+			}
+			case ND_SYMB: {
+				SymbNode* symbData = (SymbNode*) wordExpr->nodeData.symbol;
+				if (!symbData) emitError(ERR_INTERNAL, NULL, "Symbol node data is NULL.");
+				int idx = symbData->symbTableIndex;
+				if (idx < 0 || idx >= (int)codegen->symbolTable->size) {
+					emitError(ERR_INTERNAL, NULL, "Symbol index %d out of bounds in symbol table.", idx);
+				}
+				symb_entry_t* entry = codegen->symbolTable->entries[idx];
+				if (!entry) {
+					emitError(ERR_INTERNAL, NULL, "Symbol table entry at index %d is NULL.", idx);
+				}
+				// if (!GET_DEFINED(entry->flags)) {
+				// 	// This should have been taken care of by eval????
+				// 	emitError(ERR_UNDEFINED, &linedata, "Symbol `%s` is not defined.", entry->name);
+				// }
+				wordValue = entry->value.val;
+				break;
+			}
+			default:
+				emitError(ERR_INTERNAL, &linedata, "Data entry expression is of invalid type.");
+		}
+		// Write the word in little-endian
+		// Ensure enough capacity for 4 bytes
+		for (int b = 0; b < 4; b++) {
+			if (*codegenDataCount == *codegenDataCapacity) {
+				*codegenDataCapacity *= 2;
+				uint8_t* temp = (uint8_t*) realloc(codegenData, sizeof(uint8_t) * (*codegenDataCapacity));
+				if (!temp) emitError(ERR_MEM, NULL, "Failed to reallocate memory for data/const section.");
+				codegenData = temp;
+				if (isData) codegen->data.data = codegenData;
+				else codegen->consts.data = codegenData;
+			}
+			codegenData[*codegenDataCount] = (wordValue >> (8 * b)) & 0xFF;
+			(*codegenDataCount)++;
+		}
+		log("    Wrote word 0x%08X to %s section in codegen.", wordValue, isData ? "data" : "const");
+	}
+}
+
+static void genFloats(CodeGen* codegen, data_entry_t* entry, data_entry_t** entries, int* _entriesSize, int* _entriesCapacity, int* _idx, bool isData) {
+	initScope("genFloats");
+
+	log("  Generating float data entry at address 0x%08X with size %d bytes.", entry->addr, entry->size);
+
+	linedata_ctx linedata = {
+		.linenum = entry->linenum,
+		.source = ssGetString(entry->source)
+	};
+
+	uint8_t* codegenData= NULL;
+	int* codegenDataCount = NULL;
+	int* codegenDataCapacity = NULL;
+
+	if (isData) {
+		codegenData = codegen->data.data;
+		codegenDataCount = &codegen->data.dataCount;
+		codegenDataCapacity = &codegen->data.dataCapacity;
+	} else {
+		codegenData = codegen->consts.data;
+		codegenDataCount = &codegen->consts.dataCount;
+		codegenDataCapacity = &codegen->consts.dataCapacity;
+	}
+
+	// Write the floats to the appropriate section
+	for (int i = 0; i < entry->size / 4; i++) {
+		Node* floatExpr = entry->data[i];
+
+		// Need to evaluate the expression
+		bool evald = evaluateExpression(floatExpr, codegen->symbolTable);
+		// TODO: have relocations
+		if (!evald) emitError(ERR_INVALID_EXPRESSION, &linedata, "Could not evaluate immediate expression.");
+
+		// The floatExpr node can either be a number itself, an operator, or a symbol, so get its value accordingly
+		float floatValue = 0.0f;
+		switch (floatExpr->nodeType) {
+			case ND_NUMBER: {
+				NumNode* numData = floatExpr->nodeData.number;
+				if (!numData) emitError(ERR_INTERNAL, NULL, "Number node data is NULL.");
+				// Check type
+				if (numData->type != NTYPE_FLOAT) {
+					emitError(ERR_INVALID_TYPE, &linedata, "Data entry number node is not of float type.");
+				}
+				floatValue = numData->value.floatValue;
+				break;
+			}
+			case ND_OPERATOR: {
+				OpNode* opData = (OpNode*) floatExpr->nodeData.operator;
+				if (!opData) emitError(ERR_INTERNAL, NULL, "Operator node data is NULL.");
+				// Check type
+				if (opData->valueType != NTYPE_FLOAT) {
+					emitError(ERR_INVALID_TYPE, &linedata, "Data entry operator node is not of float type.");
+				}
+				floatValue = (float) opData->value;
+				break;
+			}
+			case ND_SYMB: {
+				SymbNode* symbData = (SymbNode*) floatExpr->nodeData.symbol;
+				if (!symbData) emitError(ERR_INTERNAL, NULL, "Symbol node data is NULL.");
+				int idx = symbData->symbTableIndex;
+				if (idx < 0 || idx >= (int)codegen->symbolTable->size) {
+					emitError(ERR_INTERNAL, NULL, "Symbol index %d out of bounds in symbol table.", idx);
+				}
+				symb_entry_t* entry = codegen->symbolTable->entries[idx];
+				if (!entry) {
+					emitError(ERR_INTERNAL, NULL, "Symbol table entry at index %d is NULL.", idx);
+				}
+				// if (!GET_DEFINED(entry->flags)) {
+				// 	// This should have been taken care of by eval????
+				// 	emitError(ERR_UNDEFINED, &linedata, "Symbol `%s` is not defined.", entry->name);
+				// }
+				floatValue = (float) entry->value.val;
+				break;
+			}
+			default:
+				emitError(ERR_INTERNAL, &linedata, "Data entry expression is of invalid type.");
+		}
+		// Write the float in little-endian
+		uint32_t floatAsInt = 0;
+		memcpy(&floatAsInt, &floatValue, sizeof(float));
+		// Ensure enough capacity for 4 bytes
+		for (int b = 0; b < 4; b++) {
+			if (*codegenDataCount == *codegenDataCapacity) {
+				*codegenDataCapacity *= 2;
+				uint8_t* temp = (uint8_t*) realloc(codegenData, sizeof(uint8_t) * (*codegenDataCapacity));
+				if (!temp) emitError(ERR_MEM, NULL, "Failed to reallocate memory for data/const section.");
+				codegenData = temp;
+				if (isData) codegen->data.data = codegenData;
+				else codegen->consts.data = codegenData;
+			}
+			codegenData[*codegenDataCount] = (floatAsInt >> (8 * b)) & 0xFF;
+			(*codegenDataCount)++;
+		}
+		log("    Wrote float %f to %s section in codegen.", floatValue, isData ? "data" : "const");
 	}
 }
 
@@ -835,9 +1127,9 @@ static void gendata(Parser* parser, Node* ast, CodeGen* codegen, int* dataIdx, i
 	switch (entry->type) {
 		case STRING_TYPE: genString(codegen, entry, entries, entriesSize, entriesCapacity, idx, isData); break;
 		case BYTES_TYPE: genBytes(codegen, entry, entries, entriesSize, entriesCapacity, idx, isData); break;
-		case HWORDS_TYPE:
-		case WORDS_TYPE:
-		case FLOATS_TYPE: emitWarning(WARN_UNIMPLEMENTED, NULL, "Data entry type %d generation not yet implemented.", entry->type); break;
+		case HWORDS_TYPE: genHwords(codegen, entry, entries, entriesSize, entriesCapacity, idx, isData); break;
+		case WORDS_TYPE: genWords(codegen, entry, entries, entriesSize, entriesCapacity, idx, isData); break;
+		case FLOATS_TYPE: genFloats(codegen, entry, entries, entriesSize, entriesCapacity, idx, isData); break;
 		default: emitError(ERR_INTERNAL, NULL, "Data entry type %d invalid", entry->type);
 	}
 	(*idx)++;
