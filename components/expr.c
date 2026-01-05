@@ -48,13 +48,17 @@ static Node* parsePrimary(Parser* parser) {
 	Token* token = parser->tokens[parser->currentTokenIndex];
 	Node* node = NULL;
 
+	int n = 0;
+
 	switch (token->type) {
 		case TK_IMM: // #number (immediate)
-			int n = 0;
-			if (token->lexeme[1] == '0' && (token->lexeme[2] == 'x' || token->lexeme[2] == 'X')) {
-				n = (int) strtol(token->lexeme + 1, NULL, 0); // base 0 auto-detects 0x as hex
-			} else n = atoi(token->lexeme + 1); // skip the '#'
-			goto numCase;
+			if (token->lexeme[0] == '#') {
+				// Make sure it applies to true "immediates"
+				if (token->lexeme[1] == '0' && (token->lexeme[2] == 'x' || token->lexeme[2] == 'X')) {
+					n = (int) strtol(token->lexeme + 1, NULL, 0); // base 0 auto-detects 0x as hex
+				} else n = atoi(token->lexeme + 1); // skip the '#'
+				goto numCase;
+			}
 		case TK_INTEGER:
 			if (token->lexeme[0] == '0' && (token->lexeme[1] == 'x' || token->lexeme[1] == 'X')) {
 				n = (int) strtol(token->lexeme, NULL, 0);
@@ -353,7 +357,7 @@ bool evaluateExpression(Node* exprRoot, SymbolTable* symbTable) {
 						default: emitError(ERR_INVALID_EXPRESSION, NULL, "Invalid operator for float expression.");
 					}
 					opData->valueType = NTYPE_FLOAT;
-					opData->value = 0; // Not used for float
+					opData->value = (uint32_t) fres;
 				} else {
 					switch (exprRoot->token->type) {
 						case TK_PLUS: result = lval + rval; break;

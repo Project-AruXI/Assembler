@@ -592,7 +592,7 @@ void handleM(Parser* parser, Node* instrRoot) {
 		addLD(parser, instrRoot);
 		// Even though decomposition did not occur, pretend it did
 		// Increment the LP accordingly
-		// 6 instructions were added but the LP was already increased for this LD, so it takes care of one
+		// 6 instructions were added but the LP will be increased for this LD, so it takes care of one
 		parser->sectionTable->entries[parser->sectionTable->activeSection].lp += (4 * 5);
 
 		nextToken = parser->tokens[parser->currentTokenIndex];
@@ -623,7 +623,7 @@ void handleM(Parser* parser, Node* instrRoot) {
 		addLD(parser, instrRoot);
 		// Even though decomposition did not occur, pretend it did
 		// Increment the LP accordingly
-		// 6 instructions were added but the LP was already increased for this LD, so it takes care of one
+		// 6 instructions were added but the LP will be increased for this LD, so it takes care of one
 		parser->sectionTable->entries[parser->sectionTable->activeSection].lp += (4 * 5);
 
 		nextToken = parser->tokens[parser->currentTokenIndex];
