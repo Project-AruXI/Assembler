@@ -71,7 +71,7 @@ void lexLine(Lexer* lexer, const char* line) {
 	// It also helps making a new string for the source line as `line` is managed by `getline`
 	
 	const char* originalLine = line; // The line that has the newline
-	char* sourceLine = sdstrim(sdsnew(line), "\n"); // The line to save as the source line
+	char* sourceLine = sdstrim(sdsnew(line), "\n \t\r"); // The line to save as the source line
 
 	// log("Lexing line %d: `%s`", lexer->linenum, sourceLine);
 

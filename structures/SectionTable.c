@@ -7,13 +7,13 @@
 
 SectionTable* initSectionTable() {
 	SectionTable* sectTable = (SectionTable*) malloc(sizeof(SectionTable));
-	// if (!sectTable) emitError(ERR_MEM, NULL, "Could not allocate memory for section table!\n");
+	if (!sectTable) emitError(ERR_MEM, NULL, "Could not allocate memory for section table!\n");
 
 	for (int i = 0; i < IVT_SECT_N+1; i++) {
 		sectTable->entries[i].lp = 0x00000000;
 		sectTable->entries[i].size = 0x00000000;
 	}
-	sectTable->activeSection = 0;
+	sectTable->activeSection = 0; // default to data
 
 	return sectTable;
 }

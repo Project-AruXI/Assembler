@@ -72,6 +72,7 @@ void lexParseADECLFile(FILE* file, ADECL_ctx* context) {
 	// First initialize the tables
 	SymbolTable* symbolTable = initSymbolTable();
 	StructTable* structTable = initStructTable();
+	SectionTable* sectionTable = initSectionTable();
 
 	ParserConfig pconfig = {
 		.warningAsFatal = context->parentParserConfig.warningAsFatal,
@@ -79,7 +80,7 @@ void lexParseADECLFile(FILE* file, ADECL_ctx* context) {
 		.enhancedFeatures = context->parentParserConfig.enhancedFeatures
 	};
 	Parser* parser = initParser(lexer->tokens, lexer->tokenCount, pconfig);
-	setTables(parser, NULL, symbolTable, structTable, NULL, NULL);
+	setTables(parser, sectionTable, symbolTable, structTable, NULL, NULL);
 
 	parse(parser);
 

@@ -62,7 +62,7 @@ static AOEFFSectHdr* generateSectionHeaders(SectionTable* sectTable, uint32_t se
 	}
 	sectEntries++; // ending blank entry
 
-	AOEFFSectHdr* headers = (AOEFFSectHdr*) malloc(sizeof(AOEFFSectHdr) * sectEntries);
+	AOEFFSectHdr* headers = (AOEFFSectHdr*) calloc(sectEntries, sizeof(AOEFFSectHdr));
 	if (!headers) emitError(ERR_MEM, NULL, "Failed to allocate memory for section headers.");
 
 	// Offset where all sections start at, basically the end of the relocation table

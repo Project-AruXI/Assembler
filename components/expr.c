@@ -85,7 +85,9 @@ static Node* parsePrimary(Parser* parser) {
 
 			symb_entry_t* symbEntry = getSymbolEntry(parser->symbolTable, token->lexeme);
 			if (!symbEntry) {
-				SYMBFLAGS flags = CREATE_FLAGS(M_NONE, T_NONE, E_EXPR, S_UNDEF, L_LOC, R_REF, D_UNDEF);
+				sect_table_n sect = parser->sectionTable->activeSection;
+
+				SYMBFLAGS flags = CREATE_FLAGS(M_NONE, T_NONE, E_EXPR, sect, L_LOC, R_REF, D_UNDEF);
 				symbEntry = initSymbolEntry(token->lexeme, flags, NULL, 0, NULL, -1);
 				addSymbolEntry(parser->symbolTable, symbEntry);
 			}
@@ -381,7 +383,7 @@ bool evaluateExpression(Node* exprRoot, SymbolTable* symbTable) {
 		return false;
 }
 
-Node* getExternSymbol(Node* exprRoot) {
+Node* getExternSymbol(Node* exprRoot) { // TODO: change name, better indicate if invalid expr or otherwise
 	if (exprRoot->nodeType != ND_OPERATOR) {
 		// If no operator, it means it is just the symbol itself
 		if (exprRoot->nodeType == ND_SYMB) return exprRoot;
@@ -394,6 +396,7 @@ Node* getExternSymbol(Node* exprRoot) {
 	Node* left = opData->data.binary.left;
 	Node* right = opData->data.binary.right;
 	if (!left || !right) return NULL;
+	// This makes sure that the only expression form is `symb|number +/- number|symb`
 	if (exprRoot->token->type != TK_PLUS && exprRoot->token->type != TK_MINUS) return NULL;
 
 	if (left->nodeType == ND_SYMB && right->nodeType == ND_NUMBER) return left;
