@@ -398,9 +398,9 @@ void handleByte(Parser* parser, Node* directiveRoot) {
 	// The number of bytes that the data will occupy is just the number of expressions (since each expr is 1 byte)
 	// So the size is just the count
 
-	// Make the exception that single-value expressions do not need to contain '#'
-	if (nextToken->type == TK_INTEGER) nextToken->type = TK_IMM;
 	while (true) {
+		// Make the exception that single-value expressions do not need to contain '#'
+		if (nextToken->type == TK_INTEGER) nextToken->type = TK_IMM;
 		Node* exprRoot = parseExpression(parser);
 		addNaryDirectiveData(directiveData, exprRoot);
 		exprRoot->parent = directiveRoot;
@@ -460,9 +460,9 @@ void handleHword(Parser* parser, Node* directiveRoot) {
 	int hwordArrayCapacity = 2;
 	int hwordArrayCount = 0;
 
-	// Make the exception that single-value expressions do not need to contain '#'
-	if (nextToken->type == TK_INTEGER) nextToken->type = TK_IMM;
 	while (true) {
+		// Make the exception that single-value expressions do not need to contain '#'
+		if (nextToken->type == TK_INTEGER) nextToken->type = TK_IMM;
 		Node* exprRoot = parseExpression(parser);
 		addNaryDirectiveData(directiveData, exprRoot);
 		exprRoot->parent = directiveRoot;
@@ -518,9 +518,9 @@ void handleWord(Parser* parser, Node* directiveRoot) {
 	int wordArrayCapacity = 2;
 	int wordArrayCount = 0;
 
-	// Make the exception that single-value expressions do not need to contain '#'
-	if (nextToken->type == TK_INTEGER) nextToken->type = TK_IMM;
 	while (true) {
+		// Make the exception that single-value expressions do not need to contain '#'
+		if (nextToken->type == TK_INTEGER) nextToken->type = TK_IMM;
 		Node* exprRoot = parseExpression(parser);
 		addNaryDirectiveData(directiveData, exprRoot);
 		exprRoot->parent = directiveRoot;
