@@ -1,6 +1,7 @@
 out/
 .vscode/
-*.o
+**/*.o
 .gdbinit
 
-*.ao
+**/*.ao
+**/*.aru

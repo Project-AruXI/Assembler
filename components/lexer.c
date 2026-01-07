@@ -82,15 +82,16 @@ void lexLine(Lexer* lexer, const char* line) {
 	lexer->prevToken = NULL;
 	advance(lexer);
 
-	Token* tok = getNextToken(lexer);
+	linedata_ctx linedata = {
+		.linenum = lexer->linenum,
+		.source = sourceLine
+	};
+
+	Token* tok = getNextToken(lexer, &linedata);
 	while (tok && tok->type != TK_NEWLINE && tok->type != TK_EOF) {
 		if (tok->type == TK_UNKNOWN) {
 			// This really should not happen????
 			// So it is an internal error????
-			linedata_ctx linedata = {
-				.linenum = lexer->linenum,
-				.source = sourceLine
-			};
 			emitError(ERR_INTERNAL, &linedata, "Unknown token: %s", tok->lexeme);
 		}
 
@@ -116,7 +117,8 @@ void lexLine(Lexer* lexer, const char* line) {
 		lexer->prevToken = tok;
 		// Lexer needs the original
 		lexer->line = (sds) originalLine;
-		tok = getNextToken(lexer);
+
+		tok = getNextToken(lexer, &linedata);
 	}
 
 	// Add the newline token at the end of the line
@@ -232,12 +234,7 @@ bool isRegister(sds lexeme) {
 	return false;
 }
 
-Token* getNextToken(Lexer* lexer) {
-	linedata_ctx linedata = {
-		.linenum = lexer->linenum,
-		.source = lexer->line
-	};
-
+Token* getNextToken(Lexer* lexer, linedata_ctx* linedata) {
 	Token* token = (Token*) malloc(sizeof(Token));
 	if (!token) emitError(ERR_MEM, NULL, "Failed to allocate memory for token.");
 	token->lexeme = NULL;
@@ -334,7 +331,7 @@ Token* getNextToken(Lexer* lexer) {
 			advance(lexer);
 			return token;
 		case '"':
-			getString(lexer, token, &linedata);
+			getString(lexer, token, linedata);
 			return token;
 		case '\'':
 			// Character literal
@@ -342,7 +339,7 @@ Token* getNextToken(Lexer* lexer) {
 			// char ch = lexer->currentChar;
 			advance(lexer); // consume character
 			if (lexer->currentChar != '\'') {
-				emitError(ERR_INVALID_SYNTAX, &linedata, "Unterminated character literal.");
+				emitError(ERR_INVALID_SYNTAX, linedata, "Unterminated character literal.");
 			}
 			advance(lexer); // consume closing quote
 
@@ -423,7 +420,7 @@ Token* getNextToken(Lexer* lexer) {
 				return token;
 			}
 
-			emitError(ERR_INVALID_SYNTAX, &linedata, "Unexpected character after '#': '%c'", lexer->peekedChar);
+			emitError(ERR_INVALID_SYNTAX, linedata, "Unexpected character after '#': '%c'", lexer->peekedChar);
 		case ':':
 			if (lexer->peekedChar == ':') {
 				token->type = TK_COLON_COLON;
@@ -437,9 +434,9 @@ Token* getNextToken(Lexer* lexer) {
 			}
 			return token;
 		case '=':
-			if (ispunct(lexer->peekedChar) && lexer->peekedChar != '_') {
+			if (ispunct(lexer->peekedChar) && lexer->peekedChar != '_' && lexer->peekedChar != '#') {
 				// Anything other than letters, numbers, and `_` is invalid
-				emitError(ERR_INVALID_SYNTAX, &linedata, "Unexpected character: '%c'", lexer->peekedChar);
+				emitError(ERR_INVALID_SYNTAX, linedata, "Unexpected character: '%c'", lexer->peekedChar);
 			}
 
 			token->type = TK_LITERAL;
@@ -448,11 +445,11 @@ Token* getNextToken(Lexer* lexer) {
 			return token;
 		case '!':
 			if (isalpha(lexer->peekedChar)) {
-				getMacroIfOut(lexer, token, &linedata);
+				getMacroIfOut(lexer, token, linedata);
 				return token;
 			} else {
 				// Single '!' is not valid in this assembly language
-				emitError(ERR_INVALID_SYNTAX, &linedata, "Unexpected character: '%c'", lexer->currentChar);
+				emitError(ERR_INVALID_SYNTAX, linedata, "Unexpected character: '%c'", lexer->currentChar);
 			}
 			return token;
 		case '&':
@@ -483,7 +480,7 @@ Token* getNextToken(Lexer* lexer) {
 				advance(lexer);
 				return token;
 			} else {
-				emitError(ERR_INVALID_SYNTAX, &linedata, "Unexpected character: '%c'. Did you mean '<<'?", lexer->currentChar);
+				emitError(ERR_INVALID_SYNTAX, linedata, "Unexpected character: '%c'. Did you mean '<<'?", lexer->currentChar);
 			}
 			return token;
 		case '>':
@@ -494,7 +491,7 @@ Token* getNextToken(Lexer* lexer) {
 				advance(lexer);
 				return token;
 			} else {
-				emitError(ERR_INVALID_SYNTAX, &linedata, "Unexpected character: '%c'. Did you mean '>>'?", lexer->currentChar);
+				emitError(ERR_INVALID_SYNTAX, linedata, "Unexpected character: '%c'. Did you mean '>>'?", lexer->currentChar);
 			}
 			return token;
 		case '@':
@@ -518,7 +515,7 @@ Token* getNextToken(Lexer* lexer) {
 				token->lexeme = sdsnew("@");
 				return token;
 			} else {
-				emitError(ERR_INVALID_SYNTAX, &linedata, "Unexpected character after '@': '%c'", lexer->currentChar);
+				emitError(ERR_INVALID_SYNTAX, linedata, "Unexpected character after '@': '%c'", lexer->currentChar);
 			}
 		case '$':
 			if (isalpha(lexer->peekedChar)) {
@@ -539,7 +536,7 @@ Token* getNextToken(Lexer* lexer) {
 			}
 
 			// Single '$' is not valid
-			emitError(ERR_INVALID_SYNTAX, &linedata, "Unexpected character: '%c'", lexer->currentChar);
+			emitError(ERR_INVALID_SYNTAX, linedata, "Unexpected character: '%c'", lexer->currentChar);
 		default:
 			if (isalpha(lexer->currentChar) || lexer->currentChar == '_') {
 				// Identifier, label, or register
@@ -587,11 +584,11 @@ Token* getNextToken(Lexer* lexer) {
 					// It can be the case that there is a non-hex character (outside of a-f and 0-9)
 					//   .ie 0xagg, it needs to be checked
 					if (isalpha(lexer->currentChar) || lexer->currentChar == '_') {
-						emitError(ERR_INVALID_SYNTAX, &linedata, "Invalid hexadecimal literal: unexpected character '%c' after hex digits.", lexer->currentChar);
+						emitError(ERR_INVALID_SYNTAX, linedata, "Invalid hexadecimal literal: unexpected character '%c' after hex digits.", lexer->currentChar);
 					}
 
 					int hexLen = lexer->currentPos - hexStart;
-					if (hexLen == 0) emitError(ERR_INVALID_SYNTAX, &linedata, "Invalid hexadecimal literal: missing digits after '0x'.");	
+					if (hexLen == 0) emitError(ERR_INVALID_SYNTAX, linedata, "Invalid hexadecimal literal: missing digits after '0x'.");
 
 					int len = lexer->currentPos - startPos;
 					sds lexeme = sdsnewlen(&lexer->line[startPos], len);
@@ -613,11 +610,11 @@ Token* getNextToken(Lexer* lexer) {
 					// It can be the case that there is a non-binary character (outside of 0 and 1)
 					//   .ie 0b102, it needs to be checked
 					if (isalpha(lexer->currentChar) || isdigit(lexer->currentChar) || lexer->currentChar == '_') {
-						emitError(ERR_INVALID_SYNTAX, &linedata, "Invalid binary literal: unexpected character '%c' after binary digits.", lexer->currentChar);
+						emitError(ERR_INVALID_SYNTAX, linedata, "Invalid binary literal: unexpected character '%c' after binary digits.", lexer->currentChar);
 					}
 
 					int binLen = lexer->currentPos - binStart;
-					if (binLen == 0) emitError(ERR_INVALID_SYNTAX, &linedata, "Invalid binary literal: missing digits after '0b'.");	
+					if (binLen == 0) emitError(ERR_INVALID_SYNTAX, linedata, "Invalid binary literal: missing digits after '0b'.");	
 
 					int len = lexer->currentPos - startPos;
 					sds lexeme = sdsnewlen(&lexer->line[startPos], len);
@@ -668,7 +665,7 @@ Token* getNextToken(Lexer* lexer) {
 				}
 			} else {
 				// Unknown character
-				emitError(ERR_INVALID_SYNTAX, &linedata, "Unexpected character: '%c'", lexer->currentChar);
+				emitError(ERR_INVALID_SYNTAX, linedata, "Unexpected character: '%c'", lexer->currentChar);
 			}
 			break;
 	}

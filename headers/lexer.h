@@ -5,6 +5,7 @@
 
 #include "token.h"
 
+typedef struct LineData linedata_ctx;
 
 typedef struct Lexer {
 	sds line;
@@ -48,7 +49,7 @@ void lexLine(Lexer* lexer, const char* line);
  * @param lexer The lexer
  * @return The next token
  */
-Token* getNextToken(Lexer* lexer);
+Token* getNextToken(Lexer* lexer, linedata_ctx* linedata);
 
 /* The following functions are utility functions that are not essential to the core logic or functioning of the lexer. */
 
