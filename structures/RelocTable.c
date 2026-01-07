@@ -23,6 +23,11 @@ RelocTable* initRelocTable() {
 	relocTable->constRelocTable.entryCount = 0;
 	relocTable->constRelocTable.entryCapacity = 4;
 
+	relocTable->evtRelocTable.entries = (RelocEnt**) malloc(sizeof(RelocEnt*) * 4);
+	if (!relocTable->evtRelocTable.entries) emitError(ERR_MEM, NULL, "Failed to allocate memory for evt relocation entries.");
+	relocTable->evtRelocTable.entryCount = 0;
+	relocTable->evtRelocTable.entryCapacity = 4;
+
 	return relocTable;
 }
 void deinitRelocTable(RelocTable* relocTable) {
@@ -62,6 +67,11 @@ void addRelocEntry(RelocTable* relocTable, uint8_t section, RelocEnt* entry) {
 			entryCount = &relocTable->textRelocTable.entryCount;
 			entryCapacity = &relocTable->textRelocTable.entryCapacity;
 			break;
+		case 4: // Evt section
+			entries = &relocTable->evtRelocTable.entries;
+			entryCount = &relocTable->evtRelocTable.entryCount;
+			entryCapacity = &relocTable->evtRelocTable.entryCapacity;
+			break;
 		default:
 			emitError(ERR_INTERNAL, NULL, "Invalid section %d for relocation entry.", section);
 			break;
@@ -94,19 +104,21 @@ static char* relocTypeToString(reloc_type_t type) {
 }
 
 void displayRelocTable(RelocTable* relocTable) {
-	const char* sectionNames[] = {"DATA", "CONST", "TEXT"};
+	const char* sectionNames[] = {"DATA", "CONST", "TEXT", "EVT"};
 	RelocEnt** entriesArr[] = {
 		relocTable->dataRelocTable.entries,
 		relocTable->constRelocTable.entries,
-		relocTable->textRelocTable.entries
+		relocTable->textRelocTable.entries,
+		relocTable->evtRelocTable.entries
 	};
 	uint32_t sizes[] = {
 		relocTable->dataRelocTable.entryCount,
 		relocTable->constRelocTable.entryCount,
-		relocTable->textRelocTable.entryCount
+		relocTable->textRelocTable.entryCount,
+		relocTable->evtRelocTable.entryCount
 	};
 
-	for (int s = 0; s < 3; ++s) {
+	for (int s = 0; s < 4; ++s) {
 		rtrace("\n================== %-5s Relocation Section ==================", sectionNames[s]);
 		rtrace("Total Entries: %u", sizes[s]);
 		rtrace("--------------------------------------------------------------------");

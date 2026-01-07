@@ -24,6 +24,11 @@ CodeGen* initCodeGenerator(SectionTable* sectionTable, SymbolTable* symbolTable,
 	codegen->consts.dataCount = 0;
 	codegen->consts.dataCapacity = 16;
 
+	codegen->evt.data = (uint8_t*) malloc(sizeof(uint8_t) * 16);
+	if (!codegen->evt.data) emitError(ERR_MEM, NULL, "Failed to allocate memory for evt section.");
+	codegen->evt.dataCount = 0;
+	codegen->evt.dataCapacity = 16;
+
 	codegen->sectionTable = sectionTable;
 	codegen->symbolTable = symbolTable;
 	codegen->relocTable = relocTable;
@@ -35,6 +40,7 @@ void deinitCodeGenerator(CodeGen* codegen) {
 	free(codegen->text.instructions);
 	free(codegen->data.data);
 	free(codegen->consts.data);
+	free(codegen->evt.data);
 	free(codegen);
 }
 
@@ -488,7 +494,26 @@ static void gentext(Parser* parser, CodeGen* codegen, Node* ast) {
 
 	uint32_t encoding = 0x00000000;
 
-	uint32_t lp = codegen->text.instructionCount * 4;
+	uint32_t lp = 0x0;
+	// Since instructions can be in text or in evt, the lp must change accordingly
+	if (ast->nodeData.instruction->section == TEXT_SECT_N) lp = codegen->text.instructionCount * 4;
+	else if (ast->nodeData.instruction->section == EVT_SECT_N) lp = codegen->evt.dataCount;
+
+	/**
+	 * Major note regarding LP in evt
+	 * Since text and data are intertwined, there is a chance (by error of programmer)
+	 *  that the instruction does not start in an address aligned to 4 bytes
+	 * Structurally, all text is to be before the data, but....
+	 * For example:
+	 * ```
+	 * .evt
+	 * .byte 0x0
+	 * ld x0, =_F0
+	 * ```
+	 * The instruction would begin at LP of 1.
+	 * Since that is the beginning, the processor will read the first byte (0x0) and the following three (first three of the instruction)
+	 *   as the instruction, leading to either the wrong instruction or a fault
+	 */
 
 	switch (type) {
 		case I_TYPE: encoding = encodeI(ast->nodeData.instruction, lp, parser->symbolTable, parser->relocTable); break;
@@ -502,17 +527,41 @@ static void gentext(Parser* parser, CodeGen* codegen, Node* ast) {
 	}
 
 
-	if (codegen->text.instructionCount == codegen->text.instructionCapacity) {
-		codegen->text.instructionCapacity += 5;
-		uint32_t* temp = (uint32_t*) realloc(codegen->text.instructions, codegen->text.instructionCapacity * sizeof(uint32_t));
-		if (!temp) emitError(ERR_MEM, NULL, "Could not reallocate memory of instruction encodings.");
-		// log("New instruction array: %p", temp);
-		codegen->text.instructions = temp;
+	// Writing is different depending if it is to the instruction stream or the evt one
+	// Since most importantly, the size is different
+
+	if (ast->nodeData.instruction->section == TEXT_SECT_N) {
+		log("Writing instruction to text section.");
+		if (codegen->text.instructionCount == codegen->text.instructionCapacity) {
+			codegen->text.instructionCapacity += 5;
+			uint32_t* temp = (uint32_t*) realloc(codegen->text.instructions, codegen->text.instructionCapacity * sizeof(uint32_t));
+			if (!temp) emitError(ERR_MEM, NULL, "Could not reallocate memory of instruction encodings.");
+			// log("New instruction array: %p", temp);
+			codegen->text.instructions = temp;
+		}
+		log("Writing 0x%x to index %d (address %p)", encoding, codegen->text.instructionCount, &codegen->text.instructions[codegen->text.instructionCount]);
+		codegen->text.instructions[codegen->text.instructionCount] = encoding;
+		log("Wrote 0x%x", codegen->text.instructions[codegen->text.instructionCount]);
+		codegen->text.instructionCount++;
+		return;
 	}
-	log("Writing 0x%x to index %d (address %p)", encoding, codegen->text.instructionCount, &codegen->text.instructions[codegen->text.instructionCount]);
-	codegen->text.instructions[codegen->text.instructionCount] = encoding;
-	log("Wrote 0x%x", codegen->text.instructions[codegen->text.instructionCount]);
-	codegen->text.instructionCount++;
+
+	// Else, it is EVT section
+	log("Writing instruction to evt section.");
+	// Ensure enough capacity
+	if (codegen->evt.dataCount + 4 >= codegen->evt.dataCapacity) {
+		codegen->evt.dataCapacity += 5;
+		uint8_t* temp = (uint8_t*) realloc(codegen->evt.data, codegen->evt.dataCapacity * sizeof(uint8_t));
+		if (!temp) emitError(ERR_MEM, NULL, "Could not reallocate memory of evt data.");
+		codegen->evt.data = temp;
+	}
+	log("Writing 0x%x to evt data at index %d (address %p)", encoding, codegen->evt.dataCount, &codegen->evt.data[codegen->evt.dataCount]);
+	// Write the instruction as 4 bytes, little-endian
+	codegen->evt.data[codegen->evt.dataCount + 0] = (uint8_t) ((encoding >> 0) & 0xFF);
+	codegen->evt.data[codegen->evt.dataCount + 1] = (uint8_t) ((encoding >> 8) & 0xFF);
+	codegen->evt.data[codegen->evt.dataCount + 2] = (uint8_t) ((encoding >> 16) & 0xFF);
+	codegen->evt.data[codegen->evt.dataCount + 3] = (uint8_t) ((encoding >> 24) & 0xFF);
+	codegen->evt.dataCount += 4;
 }
 
 
@@ -526,7 +575,7 @@ static void gentext(Parser* parser, CodeGen* codegen, Node* ast) {
  * @param _idx The current index in the entries array
  * @param isData Whether the data is to be written to codegen data or const
  */
-static void genString(CodeGen* codegen, data_entry_t* entry, data_entry_t** entries, int* _entriesSize, int* _entriesCapacity, int* _idx, bool isData) {
+static void genString(CodeGen* codegen, data_entry_t* entry, data_entry_t** entries, int* _entriesSize, int* _entriesCapacity, int* _idx, sect_table_n section) {
 	initScope("genString");
 
 	// log("  Generating string data entry at address 0x%08X with size %d bytes.", entry->addr, entry->size);
@@ -539,14 +588,17 @@ static void genString(CodeGen* codegen, data_entry_t* entry, data_entry_t** entr
 	int* codegenDataCount = NULL;
 	int* codegenDataCapacity = NULL;
 
-	if (isData) {
-		codegenData = codegen->data.data;
-		codegenDataCount = &codegen->data.dataCount;
-		codegenDataCapacity = &codegen->data.dataCapacity;
-	} else {
-		codegenData = codegen->consts.data;
-		codegenDataCount = &codegen->consts.dataCount;
-		codegenDataCapacity = &codegen->consts.dataCapacity;
+	switch (section) {
+		case DATA_SECT_N:
+			codegenData = codegen->data.data;
+			codegenDataCount = &codegen->data.dataCount;
+			codegenDataCapacity = &codegen->data.dataCapacity;
+			break;
+		case CONST_SECT_N:
+			codegenData = codegen->consts.data;
+			codegenDataCount = &codegen->consts.dataCount;
+			codegenDataCapacity = &codegen->consts.dataCapacity;
+			break;
 	}
 
 	// Write the bytes (including null terminator) to the appropriate section
@@ -560,8 +612,8 @@ static void genString(CodeGen* codegen, data_entry_t* entry, data_entry_t** entr
 			uint8_t* temp = (uint8_t*) realloc(codegenData, sizeof(uint8_t) * (*codegenDataCapacity));
 			if (!temp) emitError(ERR_MEM, NULL, "Failed to reallocate memory for data/const section.");
 			codegenData = temp;
-			if (isData) codegen->data.data = codegenData;
-			else codegen->consts.data = codegenData;
+			if (section == DATA_SECT_N) codegen->data.data = codegenData;
+			else codegen->consts.data = codegenData; // No check for const since at this point, it should have been checked that .string is not in evt
 		}
 
 		uint8_t byteValue = 0x00;
@@ -584,7 +636,7 @@ static void genString(CodeGen* codegen, data_entry_t* entry, data_entry_t** entr
  * @param _idx The current index in the entries array
  * @param isData Whether the data is to be written to codegen data or const
  */
-static void genBytes(CodeGen* codegen, data_entry_t* entry, data_entry_t** entries, int* _entriesSize, int* _entriesCapacity, int* _idx, bool isData) {
+static void genBytes(CodeGen* codegen, data_entry_t* entry, data_entry_t** entries, int* _entriesSize, int* _entriesCapacity, int* _idx, sect_table_n section) {
 	initScope("genBytes");
 
 	log("  Generating bytes data entry at address 0x%08X with size %d bytes.", entry->addr, entry->size);
@@ -598,14 +650,22 @@ static void genBytes(CodeGen* codegen, data_entry_t* entry, data_entry_t** entri
 	int* codegenDataCount = NULL;
 	int* codegenDataCapacity = NULL;
 
-	if (isData) {
-		codegenData = codegen->data.data;
-		codegenDataCount = &codegen->data.dataCount;
-		codegenDataCapacity = &codegen->data.dataCapacity;
-	} else {
-		codegenData = codegen->consts.data;
-		codegenDataCount = &codegen->consts.dataCount;
-		codegenDataCapacity = &codegen->consts.dataCapacity;
+	switch (section) {
+		case DATA_SECT_N:
+			codegenData = codegen->data.data;
+			codegenDataCount = &codegen->data.dataCount;
+			codegenDataCapacity = &codegen->data.dataCapacity;
+			break;
+		case CONST_SECT_N:
+			codegenData = codegen->consts.data;
+			codegenDataCount = &codegen->consts.dataCount;
+			codegenDataCapacity = &codegen->consts.dataCapacity;
+			break;
+		case EVT_SECT_N:
+			codegenData = codegen->evt.data;
+			codegenDataCount = &codegen->evt.dataCount;
+			codegenDataCapacity = &codegen->evt.dataCapacity;
+			break;
 	}
 
 	// Write the bytes to the appropriate section
@@ -616,8 +676,9 @@ static void genBytes(CodeGen* codegen, data_entry_t* entry, data_entry_t** entri
 			uint8_t* temp = (uint8_t*) realloc(codegenData, sizeof(uint8_t) * (*codegenDataCapacity));
 			if (!temp) emitError(ERR_MEM, NULL, "Failed to reallocate memory for data/const section.");
 			codegenData = temp;
-			if (isData) codegen->data.data = codegenData;
-			else codegen->consts.data = codegenData;
+			if (section == DATA_SECT_N) codegen->data.data = codegenData;
+			else if (section == CONST_SECT_N) codegen->consts.data = codegenData;
+			else if (section == EVT_SECT_N) codegen->evt.data = codegenData;
 		}
 
 		Node* byteExpr = entry->data[i];
@@ -675,11 +736,11 @@ static void genBytes(CodeGen* codegen, data_entry_t* entry, data_entry_t** entri
 
 		codegenData[*codegenDataCount] = byteValue;
 		(*codegenDataCount)++;
-		log("    Wrote byte 0x%02X to %s section in codegen.", byteValue, isData ? "data" : "const");
+		log("    Wrote byte 0x%02X to %s section in codegen.", byteValue, (section == DATA_SECT_N) ? "data" : (section == CONST_SECT_N) ? "const" : "evt");
 	}
 }
 
-static void genHwords(CodeGen* codegen, data_entry_t* entry, data_entry_t** entries, int* _entriesSize, int* _entriesCapacity, int* _idx, bool isData) {
+static void genHwords(CodeGen* codegen, data_entry_t* entry, data_entry_t** entries, int* _entriesSize, int* _entriesCapacity, int* _idx, sect_table_n section) {
 	initScope("genHwords");
 
 	log("  Generating halfword data entry at address 0x%08X with size %d bytes.", entry->addr, entry->size);
@@ -693,14 +754,22 @@ static void genHwords(CodeGen* codegen, data_entry_t* entry, data_entry_t** entr
 	int* codegenDataCount = NULL;
 	int* codegenDataCapacity = NULL;
 
-	if (isData) {
-		codegenData = codegen->data.data;
-		codegenDataCount = &codegen->data.dataCount;
-		codegenDataCapacity = &codegen->data.dataCapacity;
-	} else {
-		codegenData = codegen->consts.data;
-		codegenDataCount = &codegen->consts.dataCount;
-		codegenDataCapacity = &codegen->consts.dataCapacity;
+	switch (section) {
+		case DATA_SECT_N:
+			codegenData = codegen->data.data;
+			codegenDataCount = &codegen->data.dataCount;
+			codegenDataCapacity = &codegen->data.dataCapacity;
+			break;
+		case CONST_SECT_N:
+			codegenData = codegen->consts.data;
+			codegenDataCount = &codegen->consts.dataCount;
+			codegenDataCapacity = &codegen->consts.dataCapacity;
+			break;
+		case EVT_SECT_N:
+			codegenData = codegen->evt.data;
+			codegenDataCount = &codegen->evt.dataCount;
+			codegenDataCapacity = &codegen->evt.dataCapacity;
+			break;
 	}
 
 	// Write the halfwords to the appropriate section
@@ -765,18 +834,19 @@ static void genHwords(CodeGen* codegen, data_entry_t* entry, data_entry_t** entr
 				if (!temp) emitError(ERR_MEM, NULL, "Failed to reallocate memory for data/const section.");
 				codegenData = temp;
 
-				if (isData) codegen->data.data = codegenData;
-				else codegen->consts.data = codegenData;
+				if (section == DATA_SECT_N) codegen->data.data = codegenData;
+				else if (section == CONST_SECT_N) codegen->consts.data = codegenData;
+				else if (section == EVT_SECT_N) codegen->evt.data = codegenData;
 			}
 
 			codegenData[*codegenDataCount] = (hwordValue >> (8 * b)) & 0xFF;
 			(*codegenDataCount)++;
 		}
-		log("    Wrote halfword 0x%04X to %s section in codegen.", hwordValue, isData ? "data" : "const");
+		log("    Wrote halfword 0x%04X to %s section in codegen.", hwordValue, (section == DATA_SECT_N) ? "data" : (section == CONST_SECT_N) ? "const" : "evt");
 	}
 }
 
-static void genWords(CodeGen* codegen, data_entry_t* entry, data_entry_t** entries, int* _entriesSize, int* _entriesCapacity, int* _idx, bool isData) {
+static void genWords(CodeGen* codegen, data_entry_t* entry, data_entry_t** entries, int* _entriesSize, int* _entriesCapacity, int* _idx, sect_table_n section) {
 	initScope("genWords");
 
 	log("  Generating word data entry at address 0x%08X with size %d bytes.", entry->addr, entry->size);
@@ -790,14 +860,22 @@ static void genWords(CodeGen* codegen, data_entry_t* entry, data_entry_t** entri
 	int* codegenDataCount = NULL;
 	int* codegenDataCapacity = NULL;
 
-	if (isData) {
-		codegenData = codegen->data.data;
-		codegenDataCount = &codegen->data.dataCount;
-		codegenDataCapacity = &codegen->data.dataCapacity;
-	} else {
-		codegenData = codegen->consts.data;
-		codegenDataCount = &codegen->consts.dataCount;
-		codegenDataCapacity = &codegen->consts.dataCapacity;
+	switch (section) {
+		case DATA_SECT_N:
+			codegenData = codegen->data.data;
+			codegenDataCount = &codegen->data.dataCount;
+			codegenDataCapacity = &codegen->data.dataCapacity;
+			break;
+		case CONST_SECT_N:
+			codegenData = codegen->consts.data;
+			codegenDataCount = &codegen->consts.dataCount;
+			codegenDataCapacity = &codegen->consts.dataCapacity;
+			break;
+		case EVT_SECT_N:
+			codegenData = codegen->evt.data;
+			codegenDataCount = &codegen->evt.dataCount;
+			codegenDataCapacity = &codegen->evt.dataCapacity;
+			break;
 	}
 
 	// Write the words to the appropriate section
@@ -861,17 +939,18 @@ static void genWords(CodeGen* codegen, data_entry_t* entry, data_entry_t** entri
 				uint8_t* temp = (uint8_t*) realloc(codegenData, sizeof(uint8_t) * (*codegenDataCapacity));
 				if (!temp) emitError(ERR_MEM, NULL, "Failed to reallocate memory for data/const section.");
 				codegenData = temp;
-				if (isData) codegen->data.data = codegenData;
-				else codegen->consts.data = codegenData;
+				if (section == DATA_SECT_N) codegen->data.data = codegenData;
+				else if (section == CONST_SECT_N) codegen->consts.data = codegenData;
+				else if (section == EVT_SECT_N) codegen->evt.data = codegenData;
 			}
 			codegenData[*codegenDataCount] = (wordValue >> (8 * b)) & 0xFF;
 			(*codegenDataCount)++;
 		}
-		log("    Wrote word 0x%08X to %s section in codegen.", wordValue, isData ? "data" : "const");
+		log("    Wrote word 0x%08X to %s section in codegen.", wordValue, (section == DATA_SECT_N) ? "data" : (section == CONST_SECT_N) ? "const" : "evt");
 	}
 }
 
-static void genFloats(CodeGen* codegen, data_entry_t* entry, data_entry_t** entries, int* _entriesSize, int* _entriesCapacity, int* _idx, bool isData) {
+static void genFloats(CodeGen* codegen, data_entry_t* entry, data_entry_t** entries, int* _entriesSize, int* _entriesCapacity, int* _idx, sect_table_n section) {
 	initScope("genFloats");
 
 	log("  Generating float data entry at address 0x%08X with size %d bytes.", entry->addr, entry->size);
@@ -885,14 +964,17 @@ static void genFloats(CodeGen* codegen, data_entry_t* entry, data_entry_t** entr
 	int* codegenDataCount = NULL;
 	int* codegenDataCapacity = NULL;
 
-	if (isData) {
-		codegenData = codegen->data.data;
-		codegenDataCount = &codegen->data.dataCount;
-		codegenDataCapacity = &codegen->data.dataCapacity;
-	} else {
-		codegenData = codegen->consts.data;
-		codegenDataCount = &codegen->consts.dataCount;
-		codegenDataCapacity = &codegen->consts.dataCapacity;
+	switch (section) {
+		case DATA_SECT_N:
+			codegenData = codegen->data.data;
+			codegenDataCount = &codegen->data.dataCount;
+			codegenDataCapacity = &codegen->data.dataCapacity;
+			break;
+		case CONST_SECT_N:
+			codegenData = codegen->consts.data;
+			codegenDataCount = &codegen->consts.dataCount;
+			codegenDataCapacity = &codegen->consts.dataCapacity;
+			break;
 	}
 
 	// Write the floats to the appropriate section
@@ -958,17 +1040,17 @@ static void genFloats(CodeGen* codegen, data_entry_t* entry, data_entry_t** entr
 				uint8_t* temp = (uint8_t*) realloc(codegenData, sizeof(uint8_t) * (*codegenDataCapacity));
 				if (!temp) emitError(ERR_MEM, NULL, "Failed to reallocate memory for data/const section.");
 				codegenData = temp;
-				if (isData) codegen->data.data = codegenData;
-				else codegen->consts.data = codegenData;
+				if (section == DATA_SECT_N) codegen->data.data = codegenData;
+				else codegen->consts.data = codegenData; // Same as string, float does not happen in evt
 			}
 			codegenData[*codegenDataCount] = (floatAsInt >> (8 * b)) & 0xFF;
 			(*codegenDataCount)++;
 		}
-		log("    Wrote float %f to %s section in codegen.", floatValue, isData ? "data" : "const");
+		log("    Wrote float %f to %s section in codegen.", floatValue, (section == DATA_SECT_N) ? "data" : "const");
 	}
 }
 
-static void genZeros(CodeGen* codegen, data_entry_t* entry, data_entry_t** entries, int* _entriesSize, int* _entriesCapacity, int* _idx, bool isData) {
+static void genZeros(CodeGen* codegen, data_entry_t* entry, data_entry_t** entries, int* _entriesSize, int* _entriesCapacity, int* _idx, sect_table_n section) {
 	initScope("genZeros");
 
 	log("  Generating zero/fill data entry at address 0x%08X with size %d bytes.", entry->addr, entry->size);
@@ -977,14 +1059,22 @@ static void genZeros(CodeGen* codegen, data_entry_t* entry, data_entry_t** entri
 	int* codegenDataCount = NULL;
 	int* codegenDataCapacity = NULL;
 
-	if (isData) {
-		codegenData = codegen->data.data;
-		codegenDataCount = &codegen->data.dataCount;
-		codegenDataCapacity = &codegen->data.dataCapacity;
-	} else {
-		codegenData = codegen->consts.data;
-		codegenDataCount = &codegen->consts.dataCount;
-		codegenDataCapacity = &codegen->consts.dataCapacity;
+	switch (section) {
+		case DATA_SECT_N:
+			codegenData = codegen->data.data;
+			codegenDataCount = &codegen->data.dataCount;
+			codegenDataCapacity = &codegen->data.dataCapacity;
+			break;
+		case CONST_SECT_N:
+			codegenData = codegen->consts.data;
+			codegenDataCount = &codegen->consts.dataCount;
+			codegenDataCapacity = &codegen->consts.dataCapacity;
+			break;
+		case EVT_SECT_N:
+			codegenData = codegen->evt.data;
+			codegenDataCount = &codegen->evt.dataCount;
+			codegenDataCapacity = &codegen->evt.dataCapacity;
+			break;
 	}
 
 	// Write zeros to the appropriate section
@@ -995,17 +1085,18 @@ static void genZeros(CodeGen* codegen, data_entry_t* entry, data_entry_t** entri
 			uint8_t* temp = (uint8_t*) realloc(codegenData, sizeof(uint8_t) * (*codegenDataCapacity));
 			if (!temp) emitError(ERR_MEM, NULL, "Failed to reallocate memory for data/const section.");
 			codegenData = temp;
-			if (isData) codegen->data.data = codegenData;
-			else codegen->consts.data = codegenData;
+			if (section == DATA_SECT_N) codegen->data.data = codegenData;
+			else if (section == CONST_SECT_N) codegen->consts.data = codegenData;
+			else if (section == EVT_SECT_N) codegen->evt.data = codegenData;
 		}
 
 		codegenData[*codegenDataCount] = 0x00;
 		(*codegenDataCount)++;
-		// log("    Wrote zero byte to %s section in codegen.", isData ? "data" : "const");
+		// log("    Wrote zero byte to %s section in codegen.", (section == DATA_SECT_N) ? "data" : (section == CONST_SECT_N) ? "const" : "evt");
 	}
 }
 
-static void genFill(CodeGen* codegen, data_entry_t* entry, data_entry_t** entries, int* _entriesSize, int* _entriesCapacity, int* _idx, bool isData) {
+static void genFill(CodeGen* codegen, data_entry_t* entry, data_entry_t** entries, int* _entriesSize, int* _entriesCapacity, int* _idx, sect_table_n section) {
 	initScope("genFill");
 
 	log("  Generating fill data entry at address 0x%08X with size %d bytes.", entry->addr, entry->size);
@@ -1014,14 +1105,22 @@ static void genFill(CodeGen* codegen, data_entry_t* entry, data_entry_t** entrie
 	int* codegenDataCount = NULL;
 	int* codegenDataCapacity = NULL;
 
-	if (isData) {
-		codegenData = codegen->data.data;
-		codegenDataCount = &codegen->data.dataCount;
-		codegenDataCapacity = &codegen->data.dataCapacity;
-	} else {
-		codegenData = codegen->consts.data;
-		codegenDataCount = &codegen->consts.dataCount;
-		codegenDataCapacity = &codegen->consts.dataCapacity;
+	switch (section) {
+		case DATA_SECT_N:
+			codegenData = codegen->data.data;
+			codegenDataCount = &codegen->data.dataCount;
+			codegenDataCapacity = &codegen->data.dataCapacity;
+			break;
+		case CONST_SECT_N:
+			codegenData = codegen->consts.data;
+			codegenDataCount = &codegen->consts.dataCount;
+			codegenDataCapacity = &codegen->consts.dataCapacity;
+			break;
+		case EVT_SECT_N:
+			codegenData = codegen->evt.data;
+			codegenDataCount = &codegen->evt.dataCount;
+			codegenDataCapacity = &codegen->evt.dataCapacity;
+			break;
 	}
 
 	// Write fill bytes to the appropriate section
@@ -1039,17 +1138,18 @@ static void genFill(CodeGen* codegen, data_entry_t* entry, data_entry_t** entrie
 			uint8_t* temp = (uint8_t*) realloc(codegenData, sizeof(uint8_t) * (*codegenDataCapacity));
 			if (!temp) emitError(ERR_MEM, NULL, "Failed to reallocate memory for data/const section.");
 			codegenData = temp;
-			if (isData) codegen->data.data = codegenData;
-			else codegen->consts.data = codegenData;
+			if (section == DATA_SECT_N) codegen->data.data = codegenData;
+			else if (section == CONST_SECT_N) codegen->consts.data = codegenData;
+			else if (section == EVT_SECT_N) codegen->evt.data = codegenData;
 		}
 
 		codegenData[*codegenDataCount] = fillByte;
 		(*codegenDataCount)++;
-		// log("    Wrote fill byte 0x%02X to %s section in codegen.", fillByte, isData ? "data" : "const");
+		// log("    Wrote fill byte 0x%02X to %s section in codegen.", fillByte, (section == DATA_SECT_N) ? "data" : (section == CONST_SECT_N) ? "const" : "evt");
 	}
 }
 
-static void gendata(Parser* parser, Node* ast, CodeGen* codegen, int* dataIdx, int* constIdx) {
+static void gendata(Parser* parser, Node* ast, CodeGen* codegen, int* dataIdx, int* constIdx, int* evtIdx) {
 	initScope("gendata");
 
 	sect_table_n section = ast->nodeData.directive->section;
@@ -1076,7 +1176,10 @@ static void gendata(Parser* parser, Node* ast, CodeGen* codegen, int* dataIdx, i
 			break;
 		case BSS_SECT_N: return; // No data to generate for BSS
 		case EVT_SECT_N:
-			emitWarning(WARN_UNIMPLEMENTED, NULL, "Data generation for EVT section not yet implemented.");
+			entries = parser->dataTable->evtEntries;
+			entriesSize = (int*)&parser->dataTable->eSize;
+			entriesCapacity = (int*)&parser->dataTable->eCapacity;
+			idx = evtIdx;
 			return;
 		case IVT_SECT_N:
 			emitWarning(WARN_UNIMPLEMENTED, NULL, "Data generation for IVT section not yet implemented.");
@@ -1114,22 +1217,22 @@ static void gendata(Parser* parser, Node* ast, CodeGen* codegen, int* dataIdx, i
 	// Maybe it is worth it for .fill, but in the case that the number is 0, it might apply the same as .zero
 
 	if (ast->token->type == TK_D_ZERO) {
-		genZeros(codegen, entry, entries, entriesSize, entriesCapacity, idx, isData);
+		genZeros(codegen, entry, entries, entriesSize, entriesCapacity, idx, section);
 		(*idx)++;
 		return;
 	} else if (ast->token->type == TK_D_FILL) {
-		genFill(codegen, entry, entries, entriesSize, entriesCapacity, idx, isData);
+		genFill(codegen, entry, entries, entriesSize, entriesCapacity, idx, section);
 		(*idx)++;
 		return;
 	}
 
 	// Depending on the type of the data entry
 	switch (entry->type) {
-		case STRING_TYPE: genString(codegen, entry, entries, entriesSize, entriesCapacity, idx, isData); break;
-		case BYTES_TYPE: genBytes(codegen, entry, entries, entriesSize, entriesCapacity, idx, isData); break;
-		case HWORDS_TYPE: genHwords(codegen, entry, entries, entriesSize, entriesCapacity, idx, isData); break;
-		case WORDS_TYPE: genWords(codegen, entry, entries, entriesSize, entriesCapacity, idx, isData); break;
-		case FLOATS_TYPE: genFloats(codegen, entry, entries, entriesSize, entriesCapacity, idx, isData); break;
+		case STRING_TYPE: genString(codegen, entry, entries, entriesSize, entriesCapacity, idx, section); break;
+		case BYTES_TYPE: genBytes(codegen, entry, entries, entriesSize, entriesCapacity, idx, section); break;
+		case HWORDS_TYPE: genHwords(codegen, entry, entries, entriesSize, entriesCapacity, idx, section); break;
+		case WORDS_TYPE: genWords(codegen, entry, entries, entriesSize, entriesCapacity, idx, section); break;
+		case FLOATS_TYPE: genFloats(codegen, entry, entries, entriesSize, entriesCapacity, idx, section); break;
 		default: emitError(ERR_INTERNAL, NULL, "Data entry type %d invalid", entry->type);
 	}
 	(*idx)++;
@@ -1140,6 +1243,7 @@ void gencode(Parser* parser, CodeGen* codegen) {
 
 	int dataIdx = 0;
 	int constIdx = 0;
+	int evtIdx = 0;
 	for (int i = 0; i < parser->astCount; i++) {
 		Node* ast = parser->asts[i];
 		log("Generating code for AST %d (%p):", i, ast);
@@ -1182,7 +1286,7 @@ void gencode(Parser* parser, CodeGen* codegen) {
 
 				// Data directives are stored in the data table
 				log("    Processing directive %s", ast->token->lexeme);
-				gendata(parser, ast, codegen, &dataIdx, &constIdx);
+				gendata(parser, ast, codegen, &dataIdx, &constIdx, &evtIdx);
 				break;
 			default:
 				log("  AST root is neither instruction nor directive, ignoring.");
@@ -1194,16 +1298,19 @@ void gencode(Parser* parser, CodeGen* codegen) {
 
 void displayCodeGen(CodeGen* codegen) {
 	rlog("CodeGen State:");
+
 	rlog("Text Section: %d instructions", codegen->text.instructionCount);
 	for (int i = 0; i < codegen->text.instructionCount; i++) {
 		rlog("  [%04d] 0x%08X", i*4, codegen->text.instructions[i]);
 	}
+
 	rlog("Data Section: %d bytes", codegen->data.dataCount);
 	for (int i = 0; i < codegen->data.dataCount; i++) {
 		if (i % 16 == 0) rlog("  [%04d] ", i);
 		rlog("%02X ", codegen->data.data[i]);
 		if (i % 16 == 15 || i == codegen->data.dataCount - 1) rlog("\n");
 	}
+
 	rlog("Const Section: %d bytes", codegen->consts.dataCount);
 	for (int i = 0; i < codegen->consts.dataCount; i++) {
 		if (i % 16 == 0) rlog("  [%04d] ", i);

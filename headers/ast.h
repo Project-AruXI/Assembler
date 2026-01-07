@@ -40,7 +40,7 @@ typedef struct InstructionNode {
 	enum Instructions instruction;
 	// The arguments will depend on the instruction type
 
-	uint8_t section; // The section that the instruction is in, this is only needed for LD imm/move instructions
+	uint8_t section; // The section that the instruction is in, needed for LD imm/move instructions and text/evt distinction
 
 	union {
 		struct {

@@ -27,6 +27,12 @@ typedef struct CodeGenerator {
 		int dataCapacity;
 	} consts;
 
+	struct {
+		uint8_t* data; // for both data and instructions
+		int dataCount;
+		int dataCapacity;
+	} evt;
+
 	SectionTable* sectionTable;
 	SymbolTable* symbolTable;
 	RelocTable* relocTable;

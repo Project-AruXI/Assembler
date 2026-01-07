@@ -41,6 +41,12 @@ typedef struct RelocTable {
 		uint32_t entryCount;
 		uint32_t entryCapacity;
 	} constRelocTable;
+
+	struct {
+		RelocEnt** entries;
+		uint32_t entryCount;
+		uint32_t entryCapacity;
+	} evtRelocTable;
 } RelocTable;
 
 // For use when passing relocation data to getting immediate encoding from encoding functions

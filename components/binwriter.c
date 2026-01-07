@@ -151,14 +151,14 @@ static AOEFFSymEnt* generateSymbolTable(SymbolTable* symbTable, uint32_t strTabS
 }
 
 static AOEFFTRelTab* generateRelocTables(RelocTable* relocTable, char** outRelStrTab, uint32_t* outRelStrSize, uint32_t* outRelTabCount) {
-	AOEFFTRelTab* relocTables = (AOEFFTRelTab*) malloc(sizeof(AOEFFTRelTab) * 3);
+	AOEFFTRelTab* relocTables = (AOEFFTRelTab*) malloc(sizeof(AOEFFTRelTab) * 4);
 	if (!relocTables) emitError(ERR_MEM, NULL, "Failed to allocate memory for relocation tables.");
 
 
 	// Names are:
-	// ".trel.text", ".trel.data", ".trel.const"
-	// Allocate space for all three but only report what was used
-	char* relStrTab = (char*) malloc( sizeof(char) * (strlen(".trel.text") + 1 + strlen(".trel.data") + 1 + strlen(".trel.const") + 1) );
+	// ".trel.text", ".trel.data", ".trel.const", ".trel.evt"
+	// Allocate space for all four but only report what was used
+	char* relStrTab = (char*) malloc( sizeof(char) * (strlen(".trel.text") + 1 + strlen(".trel.data") + 1 + strlen(".trel.const") + 1 + strlen(".trel.evt") + 1) );
 	if (!relStrTab) emitError(ERR_MEM, NULL, "Failed to allocate memory for relocation string table.");
 
 	char* rstStrs = relStrTab;
@@ -240,6 +240,32 @@ static AOEFFTRelTab* generateRelocTables(RelocTable* relocTable, char** outRelSt
 
 		rstStrs = nstrcat(rstStrs, ".trel.const");
 		stridx += strlen(".trel.const") + 1;
+
+		relocTableCount++;
+	}
+
+	if (relocTable->evtRelocTable.entryCount > 0) {
+		AOEFFTRelTab* evtRelTab = &relocTables[relocTableCount];
+		evtRelTab->relSect = EVT_SECT_N;
+		evtRelTab->relTabName = stridx;
+		evtRelTab->relCount = relocTable->evtRelocTable.entryCount;
+		evtRelTab->relEntries = (AOEFFTRelEnt*) malloc(sizeof(AOEFFTRelEnt) * evtRelTab->relCount);
+		if (!evtRelTab->relEntries) emitError(ERR_MEM, NULL, "Failed to allocate memory for evt relocation entries.");
+
+		for (uint32_t i = 0; i < evtRelTab->relCount; i++) {
+			RelocEnt* srcEntry = relocTable->evtRelocTable.entries[i];
+			AOEFFTRelEnt* destEntry = &evtRelTab->relEntries[i];
+
+			*destEntry = (AOEFFTRelEnt) {
+				.reOff = srcEntry->offset,
+				.reSymb = srcEntry->symbolIdx,
+				.reType = (uint8_t) srcEntry->type,
+				.reAddend = srcEntry->addend
+			};
+		}
+
+		rstStrs = nstrcat(rstStrs, ".trel.evt");
+		stridx += strlen(".trel.evt") + 1;
 
 		relocTableCount++;
 	}
@@ -382,6 +408,9 @@ void writeBinary(CodeGen* codegen, const char* filename) {
 		} else if (i == TEXT_SECT_N) {
 			log("Writing text section...");
 			fwrite(codegen->text.instructions, sizeof(uint32_t), codegen->text.instructionCount, outfile);
+		} else if (i == EVT_SECT_N) {
+			log("Writing evt section...");
+			fwrite(codegen->evt.data, sizeof(uint8_t), codegen->evt.dataCount, outfile);
 		} else {
 			emitError(ERR_INTERNAL, NULL, "Section %d has data but is not handled in writeBinary.", i);
 		}

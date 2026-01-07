@@ -212,7 +212,7 @@ static void parseDirective(Parser* parser) {
 		case TEXT: handleText(parser); break;
 		case EVT: handleEvt(parser); break;
 		case IVT: handleIvt(parser); break;
-	
+
 		case SET: handleSet(parser, directiveRoot); break;
 		case GLOB: handleGlob(parser, directiveRoot); break;
 		case END:
