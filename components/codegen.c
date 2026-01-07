@@ -1180,7 +1180,7 @@ static void gendata(Parser* parser, Node* ast, CodeGen* codegen, int* dataIdx, i
 			entriesSize = (int*)&parser->dataTable->eSize;
 			entriesCapacity = (int*)&parser->dataTable->eCapacity;
 			idx = evtIdx;
-			return;
+			break;
 		case IVT_SECT_N:
 			emitWarning(WARN_UNIMPLEMENTED, NULL, "Data generation for IVT section not yet implemented.");
 			return;
