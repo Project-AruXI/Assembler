@@ -59,6 +59,11 @@ static Node* parsePrimary(Parser* parser) {
 					if (u <= 0xFF) n = (int)(int8_t)u;
 					else if (u <= 0xFFFF) n = (int)(int16_t)u;
 					else n = (int)(int32_t)u; 
+				} else if (token->lexeme[1] == '0' && (token->lexeme[2] == 'b' || token->lexeme[2] == 'B')) {
+					unsigned long u = strtoul(token->lexeme + 3, NULL, 2);
+					if (u <= 0xFF) n = (int)(int8_t)u;
+					else if (u <= 0xFFFF) n = (int)(int16_t)u;
+					else n = (int)(int32_t)u;
 				} else n = atoi(token->lexeme + 1); // skip the '#'
 				goto numCase;
 			}
@@ -68,6 +73,11 @@ static Node* parsePrimary(Parser* parser) {
 				if (u <= 0xFF) n = (int)(int8_t)u;
 				else if (u <= 0xFFFF) n = (int)(int16_t)u;
 				else n = (int)(int32_t)u; 
+			} else if (token->lexeme[0] == '0' && (token->lexeme[1] == 'b' || token->lexeme[1] == 'B')) {
+				unsigned long u = strtoul(token->lexeme + 2, NULL, 2);
+				if (u <= 0xFF) n = (int)(int8_t)u;
+				else if (u <= 0xFFFF) n = (int)(int16_t)u;
+				else n = (int)(int32_t)u;
 			} else n = atoi(token->lexeme);
 			numCase:
 			node = initASTNode(AST_LEAF, ND_NUMBER, token, NULL);
