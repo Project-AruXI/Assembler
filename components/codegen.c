@@ -599,6 +599,7 @@ static void genString(CodeGen* codegen, data_entry_t* entry, data_entry_t** entr
 			codegenDataCount = &codegen->consts.dataCount;
 			codegenDataCapacity = &codegen->consts.dataCapacity;
 			break;
+		default: return;
 	}
 
 	// Write the bytes (including null terminator) to the appropriate section
@@ -666,6 +667,7 @@ static void genBytes(CodeGen* codegen, data_entry_t* entry, data_entry_t** entri
 			codegenDataCount = &codegen->evt.dataCount;
 			codegenDataCapacity = &codegen->evt.dataCapacity;
 			break;
+		default: return;
 	}
 
 	// Write the bytes to the appropriate section
@@ -685,11 +687,10 @@ static void genBytes(CodeGen* codegen, data_entry_t* entry, data_entry_t** entri
 
 		// Need to evaluate the expression
 		bool evald = evaluateExpression(byteExpr, codegen->symbolTable);
-		// TODO: have relocations
+		// TODO: have relocations for extern
 		if (!evald) emitError(ERR_INVALID_EXPRESSION, &linedata, "Could not evaluate immediate expression.");
 
 		// The byteExpr node can either be a number itself, an operator, or a symbol, so get its value accordingly
-		// HACK: This was autofilled by copilot, might be source of bugs
 		uint8_t byteValue = 0x00;
 		switch (byteExpr->nodeType) {
 			case ND_NUMBER: {
@@ -719,15 +720,10 @@ static void genBytes(CodeGen* codegen, data_entry_t* entry, data_entry_t** entri
 				if (idx < 0 || idx >= (int)codegen->symbolTable->size) {
 					emitError(ERR_INTERNAL, NULL, "Symbol index %d out of bounds in symbol table.", idx);
 				}
-				symb_entry_t* entry = codegen->symbolTable->entries[idx];
-				if (!entry) {
-					emitError(ERR_INTERNAL, NULL, "Symbol table entry at index %d is NULL.", idx);
-				}
-				// if (!GET_DEFINED(entry->flags)) {
-				// 	// This should have been taken care of by eval????
-				// 	emitError(ERR_UNDEFINED, &linedata, "Symbol `%s` is not defined.", entry->name);
-				// }
-				byteValue = (uint8_t) entry->value.val; // Just take the lowest byte
+				symb_entry_t* symbEntry = codegen->symbolTable->entries[idx];
+				if (!symbEntry) emitError(ERR_INTERNAL, NULL, "Symbol table entry at index %d is NULL.", idx);
+
+				byteValue = (uint8_t) symbEntry->value.val; // Just take the lowest byte
 				break;
 			}
 			default:
@@ -770,6 +766,7 @@ static void genHwords(CodeGen* codegen, data_entry_t* entry, data_entry_t** entr
 			codegenDataCount = &codegen->evt.dataCount;
 			codegenDataCapacity = &codegen->evt.dataCapacity;
 			break;
+		default: return;
 	}
 
 	// Write the halfwords to the appropriate section
@@ -778,7 +775,7 @@ static void genHwords(CodeGen* codegen, data_entry_t* entry, data_entry_t** entr
 
 		// Need to evaluate the expression
 		bool evald = evaluateExpression(hwordExpr, codegen->symbolTable);
-		// TODO: have relocations
+		// TODO: have relocations for extern
 		if (!evald) emitError(ERR_INVALID_EXPRESSION, &linedata, "Could not evaluate immediate expression.");
 
 		// The hwordExpr node can either be a number itself, an operator, or a symbol, so get its value accordingly
@@ -811,15 +808,10 @@ static void genHwords(CodeGen* codegen, data_entry_t* entry, data_entry_t** entr
 				if (idx < 0 || idx >= (int)codegen->symbolTable->size) {
 					emitError(ERR_INTERNAL, NULL, "Symbol index %d out of bounds in symbol table.", idx);
 				}
-				symb_entry_t* entry = codegen->symbolTable->entries[idx];
-				if (!entry) {
-					emitError(ERR_INTERNAL, NULL, "Symbol table entry at index %d is NULL.", idx);
-				}
-				// if (!GET_DEFINED(entry->flags)) {
-				// 	// This should have been taken care of by eval????
-				// 	emitError(ERR_UNDEFINED, &linedata, "Symbol `%s` is not defined.", entry->name);
-				// }
-				hwordValue = (uint16_t) entry->value.val; // Just take the lowest 2 bytes
+				symb_entry_t* symbEntry = codegen->symbolTable->entries[idx];
+				if (!symbEntry) emitError(ERR_INTERNAL, NULL, "Symbol table entry at index %d is NULL.", idx);
+
+				hwordValue = (uint16_t) symbEntry->value.val; // Just take the lowest 2 bytes
 				break;
 			}
 			default:
@@ -876,6 +868,7 @@ static void genWords(CodeGen* codegen, data_entry_t* entry, data_entry_t** entri
 			codegenDataCount = &codegen->evt.dataCount;
 			codegenDataCapacity = &codegen->evt.dataCapacity;
 			break;
+		default: return;
 	}
 
 	// Write the words to the appropriate section
@@ -884,10 +877,12 @@ static void genWords(CodeGen* codegen, data_entry_t* entry, data_entry_t** entri
 
 		// Need to evaluate the expression
 		bool evald = evaluateExpression(wordExpr, codegen->symbolTable);
-		// TODO: have relocations
+		// TODO: have relocations for extern
 		if (!evald) emitError(ERR_INVALID_EXPRESSION, &linedata, "Could not evaluate immediate expression.");
 
 		// The wordExpr node can either be a number itself, an operator, or a symbol, so get its value accordingly
+		// Note that in the case it uses a symbol, there is a chance that symbol is an address
+		// That is the case to do a relocation
 		uint32_t wordValue = 0x00000000;
 		switch (wordExpr->nodeType) {
 			case ND_NUMBER: {
@@ -917,15 +912,38 @@ static void genWords(CodeGen* codegen, data_entry_t* entry, data_entry_t** entri
 				if (idx < 0 || idx >= (int)codegen->symbolTable->size) {
 					emitError(ERR_INTERNAL, NULL, "Symbol index %d out of bounds in symbol table.", idx);
 				}
-				symb_entry_t* entry = codegen->symbolTable->entries[idx];
-				if (!entry) {
-					emitError(ERR_INTERNAL, NULL, "Symbol table entry at index %d is NULL.", idx);
+				symb_entry_t* symbEntry = codegen->symbolTable->entries[idx];
+				if (!symbEntry) emitError(ERR_INTERNAL, NULL, "Symbol table entry at index %d is NULL.", idx);
+
+				if (GET_MAIN_TYPE(symbEntry->flags) != M_ABS) {
+					// The symbol is an address, have a relocation entry
+					// The symbol can only be relocated if it is a simple +/- expression
+					Node* symb = getExternSymbol(wordExpr);
+					if (!symb) {
+						linedata_ctx linedata = {
+							.linenum = wordExpr->token->linenum,
+							.source = ssGetString(wordExpr->token->sstring)
+						};
+						emitError(ERR_INVALID_EXPRESSION, &linedata, "Invalid expression for relocation.");
+					}
+
+					int32_t addend = 0;
+					// Get the addend
+					if (wordExpr->nodeType == ND_OPERATOR) {
+						if (wordExpr->nodeData.operator->data.binary.left->nodeType == ND_NUMBER) {
+							addend = wordExpr->nodeData.operator->data.binary.left->nodeData.number->value.int32Value;
+						} else if (wordExpr->nodeData.operator->data.binary.right->nodeType == ND_NUMBER) {
+							addend = wordExpr->nodeData.operator->data.binary.right->nodeData.number->value.int32Value;
+						} else {
+							emitError(ERR_INTERNAL, &linedata, "Failed to find number node for addend in immediate.");
+						}
+					}
+
+					RelocEnt* reloc = initRelocEntry(entry->addr, idx, RELOC_TYPE_WORD, addend);
+					addRelocEntry(codegen->relocTable, section, reloc);
 				}
-				// if (!GET_DEFINED(entry->flags)) {
-				// 	// This should have been taken care of by eval????
-				// 	emitError(ERR_UNDEFINED, &linedata, "Symbol `%s` is not defined.", entry->name);
-				// }
-				wordValue = entry->value.val;
+
+				wordValue = symbEntry->value.val;
 				break;
 			}
 			default:
@@ -975,6 +993,7 @@ static void genFloats(CodeGen* codegen, data_entry_t* entry, data_entry_t** entr
 			codegenDataCount = &codegen->consts.dataCount;
 			codegenDataCapacity = &codegen->consts.dataCapacity;
 			break;
+		default: return;
 	}
 
 	// Write the floats to the appropriate section
@@ -983,7 +1002,7 @@ static void genFloats(CodeGen* codegen, data_entry_t* entry, data_entry_t** entr
 
 		// Need to evaluate the expression
 		bool evald = evaluateExpression(floatExpr, codegen->symbolTable);
-		// TODO: have relocations
+		// TODO: have relocations for externs??
 		if (!evald) emitError(ERR_INVALID_EXPRESSION, &linedata, "Could not evaluate immediate expression.");
 
 		// The floatExpr node can either be a number itself, an operator, or a symbol, so get its value accordingly
@@ -1075,6 +1094,7 @@ static void genZeros(CodeGen* codegen, data_entry_t* entry, data_entry_t** entri
 			codegenDataCount = &codegen->evt.dataCount;
 			codegenDataCapacity = &codegen->evt.dataCapacity;
 			break;
+		default: return;
 	}
 
 	// Write zeros to the appropriate section
@@ -1121,6 +1141,7 @@ static void genFill(CodeGen* codegen, data_entry_t* entry, data_entry_t** entrie
 			codegenDataCount = &codegen->evt.dataCount;
 			codegenDataCapacity = &codegen->evt.dataCapacity;
 			break;
+		default: return;
 	}
 
 	// Write fill bytes to the appropriate section
@@ -1158,7 +1179,6 @@ static void gendata(Parser* parser, Node* ast, CodeGen* codegen, int* dataIdx, i
 	int* entriesSize = NULL;
 	int* entriesCapacity = NULL;
 	int* idx = NULL;
-	bool isData = false;
 
 	switch (section) {
 		case DATA_SECT_N:
@@ -1166,7 +1186,6 @@ static void gendata(Parser* parser, Node* ast, CodeGen* codegen, int* dataIdx, i
 			entriesSize = (int*)&parser->dataTable->dSize;
 			entriesCapacity = (int*)&parser->dataTable->dCapacity;
 			idx = dataIdx;
-			isData = true;
 			break;
 		case CONST_SECT_N:
 			entries = parser->dataTable->constEntries;
