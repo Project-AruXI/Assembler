@@ -601,6 +601,32 @@ Token* getNextToken(Lexer* lexer) {
 					token->lexeme = lexeme;
 
 					return token;
+				} else if (lexer->currentChar == '0' && (lexer->peekedChar == 'b' || lexer->peekedChar == 'B')) {
+					advance(lexer); // consume '0'
+					advance(lexer); // consume 'b'|'B'
+
+					int binStart = lexer->currentPos;
+					while (lexer->currentChar == '0' || lexer->currentChar == '1') {
+						advance(lexer);
+					}
+
+					// It can be the case that there is a non-binary character (outside of 0 and 1)
+					//   .ie 0b102, it needs to be checked
+					if (isalpha(lexer->currentChar) || isdigit(lexer->currentChar) || lexer->currentChar == '_') {
+						emitError(ERR_INVALID_SYNTAX, &linedata, "Invalid binary literal: unexpected character '%c' after binary digits.", lexer->currentChar);
+					}
+
+					int binLen = lexer->currentPos - binStart;
+					if (binLen == 0) emitError(ERR_INVALID_SYNTAX, &linedata, "Invalid binary literal: missing digits after '0b'.");	
+
+					int len = lexer->currentPos - startPos;
+					sds lexeme = sdsnewlen(&lexer->line[startPos], len);
+					if (!lexeme) emitError(ERR_MEM, NULL, "Failed to allocate memory for token lexeme.");
+
+					token->type = TK_INTEGER;
+					token->lexeme = lexeme;
+
+					return token;
 				} else {
 					while (isdigit(lexer->currentChar)) {
 						advance(lexer);
