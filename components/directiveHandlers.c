@@ -194,6 +194,7 @@ void handleSet(Parser* parser, Node* directiveRoot) {
 	if (symbEntry) {
 		// Update the existing entry to be defined now
 		SET_DEFINED(symbEntry->flags);
+		symbEntry->flags = SET_MAIN_TYPE(symbEntry->flags, M_ABS);
 		symbEntry->value.expr = exprRoot;
 	} else {
 		SYMBFLAGS flags = CREATE_FLAGS(M_ABS, T_NONE, E_EXPR, parser->sectionTable->activeSection, L_LOC, R_NREF, D_DEF);

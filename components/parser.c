@@ -101,14 +101,33 @@ static void parseLabel(Parser* parser) {
 		// Update the existing entry to be defined now
 		SET_DEFINED(existingEntry->flags);
 		CLR_EXPRESSION(existingEntry->flags);
-		existingEntry->flags = SET_MAIN_TYPE(existingEntry->flags, (parser->sectionTable->activeSection == TEXT_SECT_N) ? M_FUNC : M_OBJ);
+
+		uint8_t mainType = 0;
+		switch (parser->sectionTable->activeSection) {
+			case DATA_SECT_N: mainType = M_OBJ; break;
+			case CONST_SECT_N: mainType = M_OBJ; break;
+			case BSS_SECT_N: mainType = M_OBJ; break;
+			case TEXT_SECT_N: mainType = M_FUNC; break;
+			default: mainType = M_NONE; break;
+		}
+
+		existingEntry->flags = SET_MAIN_TYPE(existingEntry->flags, mainType);
 		// And the section
 		existingEntry->flags = SET_SECTION(existingEntry->flags, parser->sectionTable->activeSection);
 		existingEntry->linenum = labelToken->linenum;
 		existingEntry->source = labelToken->sstring; // Maybe have the entry use its own copy of SString
 		existingEntry->value.val = parser->sectionTable->entries[parser->sectionTable->activeSection].lp;
 	} else {
-		SYMBFLAGS flags = CREATE_FLAGS((parser->sectionTable->activeSection == TEXT_SECT_N) ? M_FUNC : M_OBJ, T_NONE, E_VAL, parser->sectionTable->activeSection, L_LOC, R_NREF, D_DEF);
+		uint8_t mainType = 0;
+		switch (parser->sectionTable->activeSection) {
+			case DATA_SECT_N: mainType = M_OBJ; break;
+			case CONST_SECT_N: mainType = M_OBJ; break;
+			case BSS_SECT_N: mainType = M_OBJ; break;
+			case TEXT_SECT_N: mainType = M_FUNC; break;
+			default: mainType = M_NONE; break;
+		}
+
+		SYMBFLAGS flags = CREATE_FLAGS(mainType, T_NONE, E_VAL, parser->sectionTable->activeSection, L_LOC, R_NREF, D_DEF);
 		uint32_t addr = parser->sectionTable->entries[parser->sectionTable->activeSection].lp;
 		symb_entry_t* symbEntry = initSymbolEntry(labelToken->lexeme, flags, NULL, addr, labelToken->sstring, labelToken->linenum);
 		if (!symbEntry) emitError(ERR_MEM, NULL, "Failed to create symbol table entry for label.");

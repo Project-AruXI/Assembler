@@ -37,6 +37,7 @@ static char* errnames[ERR_MISALIGNMENT + 1] = {
 };
 
 static char* warnnames[WARN_UNIMPLEMENTED + 1] = {
+	"UNUSED",
 	"UNREACHABLE CODE",
 	"UNEXPECTED BEHAVIOR",
 	"UNIMPLEMENTED FEATURE"

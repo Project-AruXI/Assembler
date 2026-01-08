@@ -33,6 +33,7 @@ typedef enum {
 } errType;
 
 typedef enum {
+	WARN_UNUSED,
 	WARN_UNREACHABLE,
 	WARN_UNEXPECTED,
 	WARN_UNIMPLEMENTED
