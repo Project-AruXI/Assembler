@@ -1257,6 +1257,48 @@ static void gendata(Parser* parser, Node* ast, CodeGen* codegen, int* dataIdx, i
 	(*idx)++;
 }
 
+
+/**
+ * Checks for any defined but unused symbols and evaluating them to ensure they are expression-less.
+ * @param symbTable 
+ */
+static void resolveSymbols(SymbolTable* symbTable) {
+	initScope("resolveSymbols");
+
+	for (int i = 0; i < symbTable->size; i++) {
+		symb_entry_t* entry = symbTable->entries[i];
+
+		// If the symbol is defined but not used, check if it is expression-less
+		// Note that since externs are set as undef, it is fine
+		if (GET_DEFINED(entry->flags) == D_DEF && GET_REFERENCED(entry->flags) == R_NREF && GET_MAIN_TYPE(entry->flags) == M_ABS) {
+			linedata_ctx linedata = {
+				.linenum = entry->linenum,
+				.source = ssGetString(entry->source)
+			};
+
+			emitWarning(WARN_UNUSED, NULL, "Symbol `%s` defined at `%s` but not used.", entry->name, linedata.source);
+
+			log("Resolving defined but unused symbol `%s` at index %d.", entry->name, i);
+			// Evaluate the symbol's expression
+			bool evald = evaluateExpression(entry->value.expr, symbTable);
+			if (!evald) {
+				emitError(ERR_INVALID_EXPRESSION, &linedata, "Could not evaluate expression for defined but unused symbol `%s`.", entry->name);
+			}
+			
+			uint32_t val = 0x0;
+			if (entry->value.expr->nodeType == ND_NUMBER) val = entry->value.expr->nodeData.number->value.uint32Value;
+			else if (entry->value.expr->nodeType == ND_SYMB) val = entry->value.expr->nodeData.symbol->value;
+			else if (entry->value.expr->nodeType == ND_OPERATOR) val = entry->value.expr->nodeData.operator->value;
+
+			entry->value.expr = NULL;
+			CLR_EXPRESSION(entry->flags);
+			entry->value.val = val;
+			log("  Symbol `%s` resolved to value 0x%08X.", entry->name, entry->value.val);
+
+		}
+	}
+}
+
 void gencode(Parser* parser, CodeGen* codegen) {
 	initScope("gencode");
 
@@ -1312,6 +1354,8 @@ void gencode(Parser* parser, CodeGen* codegen) {
 				break;
 		}
 	}
+
+	resolveSymbols(parser->symbolTable);
 }
 
 
