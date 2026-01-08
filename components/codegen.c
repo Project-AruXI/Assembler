@@ -541,7 +541,7 @@ static void gentext(Parser* parser, CodeGen* codegen, Node* ast) {
 		}
 		log("Writing 0x%x to index %d (address %p)", encoding, codegen->text.instructionCount, &codegen->text.instructions[codegen->text.instructionCount]);
 		codegen->text.instructions[codegen->text.instructionCount] = encoding;
-		log("Wrote 0x%x", codegen->text.instructions[codegen->text.instructionCount]);
+		log("Wrote 0x%x\n", codegen->text.instructions[codegen->text.instructionCount]);
 		codegen->text.instructionCount++;
 		return;
 	}
@@ -555,7 +555,7 @@ static void gentext(Parser* parser, CodeGen* codegen, Node* ast) {
 		if (!temp) emitError(ERR_MEM, NULL, "Could not reallocate memory of evt data.");
 		codegen->evt.data = temp;
 	}
-	log("Writing 0x%x to evt data at index %d (address %p)", encoding, codegen->evt.dataCount, &codegen->evt.data[codegen->evt.dataCount]);
+	log("Writing 0x%x to evt data at index %d (address %p)\n", encoding, codegen->evt.dataCount, &codegen->evt.data[codegen->evt.dataCount]);
 	// Write the instruction as 4 bytes, little-endian
 	codegen->evt.data[codegen->evt.dataCount + 0] = (uint8_t) ((encoding >> 0) & 0xFF);
 	codegen->evt.data[codegen->evt.dataCount + 1] = (uint8_t) ((encoding >> 8) & 0xFF);
@@ -1328,11 +1328,13 @@ void gencode(Parser* parser, CodeGen* codegen) {
 						Node* expandedInstr = ast->nodeData.instruction->data.mType.expanded[i];
 						log("    Generating expanded instruction %d for LD immediate/move form:", i);
 						gentext(parser, codegen, expandedInstr);
+						rlog("\n");
 					}
 
 					if (ast->nodeData.instruction->data.mType.expanded[6]) {
 						log("    Generating expanded instruction 6 for LD immediate form:");
 						gentext(parser, codegen, ast->nodeData.instruction->data.mType.expanded[6]);
+						rlog("\n");
 					}
 				} else gentext(parser, codegen, ast);
 				break;
