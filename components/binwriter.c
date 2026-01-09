@@ -355,7 +355,9 @@ void writeBinary(CodeGen* codegen, const char* filename) {
 		.hDyLibStrTabOff = 0,
 		.hDyLibStrTabSize = 0,
 		.hImportTabOff = 0,
-		.hImportTabSize = 0
+		.hImportTabSize = 0,
+		.hExportTabOff = 0,
+		.hExportTabSize = 0
 	};
 	fwrite(&header, sizeof(AOEFFhdr), 1, outfile);
 
@@ -381,7 +383,7 @@ void writeBinary(CodeGen* codegen, const char* filename) {
 
 	uint8_t zeroBufferPadding[4] = {0, 0, 0, 0};
 
-	// Write relocation table
+	// Write (static) relocation table
 	for (uint32_t i = 0; i < relTabCount; i++) {
 		AOEFFTRelTab* tab = &relocTables[i];
 		rlog("Writing relocation table for section %d with %d entries.\n", tab->relSect, tab->relCount);
