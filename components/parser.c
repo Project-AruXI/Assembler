@@ -278,18 +278,18 @@ static void handleLDImmMove(Parser* parser, Node* ldInstrNode, uint32_t lp) {
 
 	/**
 	 * LD move can:
-	 * - move a local absolute value
-	 * - move a local address
+	 * - move a locally-defined absolute value
+	 * - move a locally-defined address
 	 * - move an extern (but absolute) value
 	 * - move an extern (but address) value
 	 * 
-	 * No relocation is needed for local absolute, but it is needed for local address
+	 * No relocation is needed for locally-defined absolute, but it is needed for locally-defined address
 	 * For externs, since the assembler cannot know the type, it will emit a relocation for both (absolute or address)
 	 * Leave it to the linker that, once knowing all symbols, determine whether that relocation is needed or not
 	 * 
 	 * Hence:
-	 * - local absolute: decomp only
-	 * - local address: reloc + decomp
+	 * - locally-defined absolute: decomp only
+	 * - locally-defined address: reloc + decomp
 	 * - extern absolute: reloc + decomp
 	 * - extern address: reloc + decomp
 	 */
@@ -320,9 +320,9 @@ static void handleLDImmMove(Parser* parser, Node* ldInstrNode, uint32_t lp) {
 	if (externSymbol) {
 		int idx = externSymbol->nodeData.symbol->symbTableIndex;
 		symb_entry_t* symbEntry = parser->symbolTable->entries[idx];
-		if (GET_LOCALITY(symbEntry->flags) == L_LOC && GET_MAIN_TYPE(symbEntry->flags) != M_ABS) {
+		if (GET_MAIN_TYPE(symbEntry->flags) != M_ABS && GET_SECTION(symbEntry->flags) != S_UNDEF) {
 			isLocalAddress = true;
-			log("LD move form instruction immediate is a local address. Will do relocation as well.");
+			log("LD move form instruction immediate is a locally-defined address. Will do relocation as well.");
 		}
 	}
 
