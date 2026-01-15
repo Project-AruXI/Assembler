@@ -263,10 +263,10 @@ static uint32_t encodeR(InstrNode* data) {
 		case LSL: opcode = 0b01001001; break;
 		case LSR: opcode = 0b01001011; break;
 		case ASR: opcode = 0b01001101; break;
-		case MUL: opcode = 0b11000001; break;
-		case SMUL: opcode = 0b11001001; break;
-		case DIV: opcode = 0b11010001; break;
-		case SDIV: opcode = 0b11011001; break;
+		case MUL: opcode = 0b10100000; break;
+		case SMUL: opcode = 0b10100010; break;
+		case DIV: opcode = 0b10101000; break;
+		case SDIV: opcode = 0b10101010; break;
 		default: emitError(ERR_INTERNAL, NULL, "Could not encode instruction `%s`", INSTRUCTIONS[data->instruction]);
 	}
 
