@@ -400,6 +400,10 @@ bool evaluateExpression(Node* exprRoot, SymbolTable* symbTable) {
 				SymbNode* lsymb = (SymbNode*)left->nodeData.symbol;
 				lval = lsymb->value;
 				ltype = lsymb->type;
+			} else if (left && left->nodeType == ND_OPERATOR) {
+				OpNode* lop = (OpNode*)left->nodeData.operator;
+				lval = lop->value;
+				ltype = lop->valueType;
 			}
 			if (right && right->nodeType == ND_NUMBER) {
 				NumNode* rnum = (NumNode*)right->nodeData.number;
@@ -416,6 +420,10 @@ bool evaluateExpression(Node* exprRoot, SymbolTable* symbTable) {
 				SymbNode* rsymb = (SymbNode*)right->nodeData.symbol;
 				rval = rsymb->value;
 				rtype = rsymb->type;
+			} else if (right && right->nodeType == ND_OPERATOR) {
+				OpNode* rop = (OpNode*)right->nodeData.operator;
+				rval = rop->value;
+				rtype = rop->valueType;
 			}
 			// Promote type if needed
 			if (isFloat || ltype == NTYPE_FLOAT || rtype == NTYPE_FLOAT) {
