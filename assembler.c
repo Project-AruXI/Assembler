@@ -16,6 +16,7 @@
 
 Config config;
 
+
 char* parseArgs(int argc, char const* argv[]) {
 	// Init config with defaults
 	config.useDebugSymbols = false;
@@ -110,9 +111,9 @@ int main(int argc, char const* argv[]) {
 
 	rlog("\nLexed %d lines. Read %d tokens:", lexer->linenum, lexer->tokenCount);
 	// Show contents of lexer's tokens
-	for (int i = 0; i < lexer->tokenCount; i++) {
-		printToken(lexer->tokens[i]);
-	}
+	// for (int i = 0; i < lexer->tokenCount; i++) {
+	// 	printToken(lexer->tokens[i]);
+	// }
 	rlog("\n");
 
 	// Finished lexing, now parse
@@ -136,17 +137,18 @@ int main(int argc, char const* argv[]) {
 	parse(parser);
 
 	rlog("\n\n");
-	rlog("Parsed %d ASTs:", parser->astCount);
-	for (int i = 0; i < parser->astCount; i++) {
-		rlog("AST %d:", i);
-		printAST(parser->asts[i]);
-	}
+	// rlog("Parsed %d ASTs:", parser->astCount);
+	// for (int i = 0; i < parser->astCount; i++) {
+	// 	rlog("AST %d:", i);
+	// 	printAST(parser->asts[i]);
+	// }
 	rlog("\n");
 
 	CodeGen* codegen = initCodeGenerator(sectionTable, symbolTable, relocTable);
 	gencode(parser, codegen);
+
 	writeBinary(codegen, config.outbin);
-	
+
 	displaySymbolTable(symbolTable);
 	displaySectionTable(sectionTable);
 	displayStructTable(structTable);
