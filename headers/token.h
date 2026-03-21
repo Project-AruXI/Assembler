@@ -1,8 +1,8 @@
 #ifndef _TOKEN_H_
 #define _TOKEN_H_
 
-#include "../common/libsecuredstring.h"
-#include "../common/sds.h"
+#include "../common/lib/securedstring/libsecuredstring.h"
+#include "../common/lib/sds/sds.h"
 
 typedef enum {
 	TK_EOF,
