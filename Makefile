@@ -32,7 +32,11 @@ arxsm: $(OBJS)
 	$(CC) $(CFLAGS) -o $(TARGET) $(OBJS) $(LIBS)
 
 commonlibs:
-	$(MAKE) -C $(COMMON_LIBDIR) all
+# No need to make everything, just the ones needed for the assembler
+	$(MAKE) -C $(COMMON_LIBDIR) libss libsds libargparse
+
+commonlibs-win:
+	$(MAKE) -C $(COMMON_LIBDIR) libss-win libsds-win libargparse-win
 
 liblexer: CFLAGS += -g -O0
 liblexer:
